@@ -1,0 +1,175 @@
+syntax = "proto3";
+
+package cellcontrol.v1;
+
+// C# 네임스페이스
+option csharp_namespace = "CellControl.V1";
+
+// ==================== 공통 ====================
+
+// 빈 메시지 (명령 파라미터 없을 때 사용)
+message Empty {}
+
+// 서버/장치 시간 표현 (epoch milliseconds)
+message Timestamp {
+  int64 unix_ms = 1; // UTC 기준 Unix 시간(ms)
+}
+
+// 3D 위치 + 회전(quaternion)
+message Pose3 {
+  double x = 1;   // X 좌표 (미터)
+  double y = 2;   // Y 좌표 (미터)
+  double z = 3;   // Z 좌표 (미터)
+  double qx = 4;  // 회전 quaternion X
+  double qy = 5;  // 회전 quaternion Y
+  double qz = 6;  // 회전 quaternion Z
+  double qw = 7;  // 회전 quaternion W
+}
+
+// 시뮬레이션 / 실물 모드
+enum Mode {
+  MODE_UNSPECIFIED = 0; // 미지정
+  MODE_SIM = 1;         // Gazebo 시뮬레이션
+  MODE_REAL = 2;        // 실제 하드웨어
+}
+
+// 일반 상태 코드
+enum Status {
+  STATUS_UNSPECIFIED = 0; // 미지정
+  STATUS_OK = 1;          // 정상
+  STATUS_WARN = 2;        // 경고
+  STATUS_ERROR = 3;       // 오류
+}
+
+// Job(작업) 전체 상태
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0; // 미지정
+  JOB_PENDING = 1;           	      // 생성됨, 아직 시작 전
+  JOB_RUNNING = 2;           	      // 실행 중
+  JOB_PAUSED = 3;             	      // 일시정지
+  JOB_COMPLETED = 4;      	      // 정상 완료
+  JOB_CANCELED = 5;         	      // 사용자 취소
+  JOB_FAILED = 6;             // 실패
+}
+
+// Job 내부 단계(워크플로우 단계)
+enum JobStep {
+  JOB_STEP_UNSPECIFIED = 0;
+  STEP_DETECT = 1;       // 비전 인식
+  STEP_PLAN_PICK = 2;    // 픽 계획 수립
+  STEP_PICK = 3;         // 로봇 픽 동작
+  STEP_PLACE = 4;        // 분류 위치에 적재
+  STEP_CALL_AGV = 5;     // AGV 호출
+  STEP_LOAD = 6;         // AGV 적재
+  STEP_DISPATCH = 7;     // AGV 출발
+  STEP_DONE = 8;         // 전체 완료
+}
+
+// 에러 코드 정의 (ASP 기준 계약)
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+
+  // 일반/시스템 오류
+  ERR_INVALID_ARGUMENT = 1000; // 잘못된 요청
+  ERR_NOT_FOUND = 1001;        // 대상 없음
+  ERR_CONFLICT = 1002;         // 상태 충돌 (이미 실행 중 등)
+  ERR_TIMEOUT = 1003;          // 타임아웃
+  ERR_UNAUTHORIZED = 1004;     // 권한 없음
+
+  // 도메인 오류
+  ERR_SAFETY_INTERLOCK = 2000; // 안전 인터록/E-Stop
+  ERR_ROBOT_FAULT = 2100;      // 로봇 오류
+  ERR_AGV_FAULT = 2200;        // AGV 오류
+  ERR_VISION_FAIL = 2300;      // 비전 인식 실패
+  ERR_PLC_FAULT = 2400;        // PLC/설비 오류
+}
+
+// 에러 상세 정보
+message ErrorInfo {
+  ErrorCode code = 1; // 에러 코드
+  string message = 2; // 사용자/로그용 메시지
+  string detail = 3;  // 디버깅용 상세 설명
+}
+
+// 명령 응답 공통 포맷
+message Ack {
+  bool accepted = 1;       // 명령 수락 여부
+  string command_id = 2;   // 서버에서 부여한 명령 ID
+  ErrorInfo error = 3;     // 실패 시 에러 정보
+}
+
+// ==================== 비전 ====================
+
+// 비전 인식 결과
+message VisionResult {
+  string box_id = 1;        // 인식된 박스 ID
+  string class_name = 2;    // 분류 결과 (예: A/B/C, 재질)
+  double confidence = 3;    // 신뢰도 (0~1)
+  Pose3 pose = 4;           // 박스 위치/자세 (선택)
+  Timestamp captured_at = 5;// 촬영 시각
+}
+
+// ==================== 로봇 ====================
+
+// 로봇 상태 요약
+message RobotState {
+  string robot_id = 1;       // 로봇 ID
+  bool connected = 2;        // 연결 여부
+  Status status = 3;         // 상태 코드
+  bool busy = 4;             // 작업 중 여부
+  Pose3 tcp_pose = 5;        // TCP 위치 (선택)
+  string current_action = 6; // 현재 동작 설명
+  ErrorInfo alarm = 7;       // 알람 정보
+  Timestamp last_seen = 8;   // 마지막 상태 수신 시각
+}
+
+// AGV 상태 요약
+message AgvState {
+  string agv_id = 1;        	  // AGV ID
+  bool connected = 2;       	 // 연결 여부
+  Status status = 3;       	 // 상태 코드
+  string mission_id = 4;     	 // 현재 미션 ID
+  string mission_state = 5;  	 // 미션 상태
+  Pose3 pose = 6;            	 // AGV 위치
+  double battery_pct = 7;   	 // 배터리 잔량(%)
+  ErrorInfo alarm = 8;      	 // 알람
+  Timestamp last_seen = 9;    // 마지막 상태 시각
+}
+
+// 설비(OPC UA) 상태
+message CellState {
+  bool e_stop = 1;            // 비상정지 상태
+  bool interlock_ok = 2;      // 인터록 정상 여부
+  bool conveyor_running = 3;  // 컨베이어 동작 중
+  bool sensor_box_present = 4;// 박스 감지 센서
+  bool safety_door_closed = 5;// 안전문 닫힘 여부
+  Status status = 6;          // 설비 상태
+  ErrorInfo alarm = 7;        // 설비 알람
+  Timestamp last_seen = 8;    // 마지막 수신 시각
+}
+
+// Job 상태
+message JobState {
+  string job_id = 1;           // 작업 ID
+  JobStatus status = 2;        // 작업 전체 상태
+  JobStep step = 3;            // 현재 단계
+  int32 progress_pct = 4;      // 진행률(%)
+  string target_bin = 5;       // 목적 분류 위치
+  VisionResult last_vision = 6; // 최근 비전 결과
+  ErrorInfo error = 7;         // 실패 시 에러
+  Timestamp updated_at = 8;    // 마지막 갱신 시각
+}
+
+// 시스템 전체 상태 (ASP 기준 단일 SoT)
+message SystemState {
+  Mode mode = 1;                // SIM / REAL
+  string room_id = 2;           // 셀/라인 ID
+  Timestamp server_time = 3;    // ASP 기준 시각
+
+  JobState job = 4;             // 현재 작업
+  repeated RobotState robots = 5;// 로봇 목록
+  repeated AgvState agvs = 6;   // AGV 목록
+  CellState cell = 7;           // 설비 상태
+
+  int64 seq = 100;              // 상태 시퀀스 번호
+}

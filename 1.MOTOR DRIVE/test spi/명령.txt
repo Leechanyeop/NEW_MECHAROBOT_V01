@@ -8,3 +8,7 @@ $udp = New-Object System.Net.Sockets.UdpClient
 $bytes = [byte[]] (0x01)
 $udp.Send($bytes, $bytes.Length, "<IP>", <PORT>)
 $udp.Close()
+
+
+python udp_servo_text.py SV1 120
+python udp_servo_text.py SV2 45

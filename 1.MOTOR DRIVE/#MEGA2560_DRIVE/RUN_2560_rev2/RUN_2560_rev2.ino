@@ -1,4 +1,5 @@
-word(2)#include <AFMotor.h>
+
+#include <AFMotor.h>
 
 // AFMotor: 모터 포트 1~4에 각각 연결된 DC 모터
 AF_DCMotor motor1(1); // 앞 왼쪽

@@ -1,0 +1,32 @@
+- 시나리오
+- 로봇이 출발지 A에서 바코드(A) 를 읽음 → 그 순간부터 주행속도에 따라 위치값을 OPC UA 서버로 주기 전송.
+- 로봇이 도착지 B에서 바코드(B) 를 읽음 → 도착 신호(도착 플래그/타임스탬프 등) 를 OPC UA 서버로 전송하고 전송을 종료.
+
+1. 권장 아키텍처 (간단)
+- 바코드 리더: 로봇에 장착(USB/Serial/Keyboard‑wedge) 또는 A/B 지점에 고정(스테이션).
+- 로컬 브리지(권장: Raspberry Pi 또는 로봇의 SBC):
+- 바코드 이벤트 수신(Serial 또는 키보드 입력)
+- 로봇 현재 속도 조회(UDP로 ESP32에 질의하거나, Mega에서 시리얼로 읽음)
+- OPC UA 서버에 위치/상태 쓰기(또는 OPC UA 서버가 중앙에 있으면 클라이언트로 쓰기)
+- OPC UA Server: Robot/PositionX, Robot/PositionY, Robot/Speed, Robot/Status 같은 노드 제공
+- ESP32 / Mega: 모터 제어, 센서, 바코드 리더(직결 시) 담당. (브리지는 ESP32/Mega와 통신해 속도/상태를 얻음)
+
+2. OPC UA 노드 설계(예시)
+(서버 쪽에 미리 노드를 만들어 두거나 브리지에서 생성/쓰기)
+- ns=2;s=Robot.Position.X — 실수 (m)
+- ns=2;s=Robot.Position.Y — 실수 (m)
+- ns=2;s=Robot.Position.Theta — 실수 (deg)
+- ns=2;s=Robot.Speed — 정수 (cm/s 또는 m/s)
+- ns=2;s=Robot.Status — 문자열 ("IDLE", "RUNNING", "ARRIVED")
+- ns=2;s=Robot.LastBarcode — 문자열 (읽은 바코드 값)
+- ns=2;s=Robot.ArrivalTime — 문자열/DateTime (도착 시각)
+노드 네이밍/네임스페이스는 현장 표준에 맞춰 조정하세요.
+
+
+3. 동작 로직(요약)
+- A 바코드 읽음 → 브리지: LastBarcode = "A", Status = "RUNNING" → 위치 전송 루틴 시작.
+- 위치 전송 루틴: 현재 속도 v(m/s)를 읽어, 일정 주기 dt(예: 0.5s)마다 이동 거리 = v * dt 를 누적해 PositionX/Y를 계산(단순 직선 가정)하고 OPC UA에 씀. (실제 경로계획이 있으면 그 경로를 따라 좌표를 보냄)
+- B 바코드 읽음 → 브리지: LastBarcode = "B", Status = "ARRIVED", ArrivalTime = now → 위치 전송 루틴 종료.
+
+
+

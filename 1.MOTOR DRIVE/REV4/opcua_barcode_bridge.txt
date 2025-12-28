@@ -1,0 +1,181 @@
+# opcua_barcode_bridge
+# pip install opcua
+import time
+import socket
+from opcua import Client, ua
+from datetime import datetime
+
+# ====== 설정 ======
+OPC_UA_URL = "opc.tcp://192.168.0.10:4840"   # OPC UA 서버 주소
+NODE_POS_X = "ns=2;s=Robot.Position.X"
+NODE_POS_Y = "ns=2;s=Robot.Position.Y"
+NODE_THETA = "ns=2;s=Robot.Position.Theta"
+NODE_SPEED = "ns=2;s=Robot.Speed"
+NODE_STATUS = "ns=2;s=Robot.Status"
+NODE_LAST_BARCODE = "ns=2;s=Robot.LastBarcode"
+NODE_ARRIVAL_TIME = "ns=2;s=Robot.ArrivalTime"
+
+ESP32_IP = "192.168.0.66"
+ESP32_PORT = 4210
+UDP_TIMEOUT = 0.5
+
+# 위치 업데이트 주기 (초)
+DT = 0.5
+
+# 단순 직선 이동 가정: A->B 방향 벡터 (예시)
+# 실제로는 바코드 A/B에서 좌표를 읽어 목표 좌표를 사용하세요.
+A_COORD = (0.0, 0.0)
+B_COORD = (5.0, 0.0)  # 예: B는 x=5m, y=0
+
+# ====== 유틸: ESP32에서 속도 읽기 (UDP) ======
+def get_speed_from_esp32():
+    """
+    ESP32에 속도 질의(예: "GETS" 또는 "SPD?")를 보내고 정수(m/s*100 등)로 응답받는 가정.
+    실제 ESP32 스케치에 맞춰 요청/응답 포맷을 맞추세요.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(UDP_TIMEOUT)
+    try:
+        # 여기서는 "SPD?" 요청을 보낸다고 가정
+        sock.sendto(b"SPD?", (ESP32_IP, ESP32_PORT))
+        data, _ = sock.recvfrom(64)
+        # 응답 예: b"150" (속도 150 -> 단위: cm/s 또는 1/100 m/s 등)
+        s = data.decode('utf-8', errors='ignore').strip()
+        val = float(s)
+        # 예: ESP32가 cm/s를 보낸다면 m/s로 변환: val/100
+        # 여기서는 val이 m/s로 가정
+        return val
+    except Exception as e:
+        # 실패 시 안전한 기본값(예: 0) 반환
+        print("get_speed_from_esp32 error:", e)
+        return 0.0
+    finally:
+        sock.close()
+
+# ====== OPC UA 쓰기 유틸 ======
+class OPCUAClient:
+    def __init__(self, url):
+        self.client = Client(url)
+        self.client.connect()
+        print("Connected to OPC UA:", url)
+        # 노드 객체
+        self.n_pos_x = self.client.get_node(NODE_POS_X)
+        self.n_pos_y = self.client.get_node(NODE_POS_Y)
+        self.n_theta = self.client.get_node(NODE_THETA)
+        self.n_speed = self.client.get_node(NODE_SPEED)
+        self.n_status = self.client.get_node(NODE_STATUS)
+        self.n_last_barcode = self.client.get_node(NODE_LAST_BARCODE)
+        self.n_arrival_time = self.client.get_node(NODE_ARRIVAL_TIME)
+
+    def write_position(self, x, y, theta=0.0):
+        try:
+            self.n_pos_x.set_value(float(x), ua.VariantType.Float)
+            self.n_pos_y.set_value(float(y), ua.VariantType.Float)
+            self.n_theta.set_value(float(theta), ua.VariantType.Float)
+        except Exception as e:
+            print("OPC write_position error:", e)
+
+    def write_speed(self, speed):
+        try:
+            self.n_speed.set_value(float(speed), ua.VariantType.Float)
+        except Exception as e:
+            print("OPC write_speed error:", e)
+
+    def write_status(self, status_str):
+        try:
+            self.n_status.set_value(str(status_str), ua.VariantType.String)
+        except Exception as e:
+            print("OPC write_status error:", e)
+
+    def write_last_barcode(self, code):
+        try:
+            self.n_last_barcode.set_value(str(code), ua.VariantType.String)
+        except Exception as e:
+            print("OPC write_last_barcode error:", e)
+
+    def write_arrival_time(self, tstr):
+        try:
+            self.n_arrival_time.set_value(str(tstr), ua.VariantType.String)
+        except Exception as e:
+            print("OPC write_arrival_time error:", e)
+
+    def close(self):
+        self.client.disconnect()
+
+# ====== 메인 로직 ======
+def run_bridge():
+    opc = OPCUAClient(OPC_UA_URL)
+
+    try:
+        # 초기 상태
+        opc.write_status("IDLE")
+        opc.write_position(A_COORD[0], A_COORD[1], 0.0)
+        opc.write_speed(0.0)
+
+        print("Ready. 바코드 입력을 기다립니다. (콘솔에 A 또는 B 입력 또는 실제 바코드 리더 연결)")
+        while True:
+            # 실제 환경에서는 바코드 리더(Serial) 이벤트를 여기서 처리
+            # 예시: 콘솔 입력으로 시뮬레이션
+            code = input("Scan barcode (type A or B, or 'quit'): ").strip()
+            if not code:
+                continue
+            if code.lower() == "quit":
+                break
+
+            # 바코드 읽음 처리
+            print("Barcode read:", code)
+            opc.write_last_barcode(code)
+
+            if code.upper() == "A":
+                # 출발 처리
+                opc.write_status("RUNNING")
+                # 위치 전송 루틴 시작: 단순 직선 보간 A->B
+                total_dist = ((B_COORD[0]-A_COORD[0])**2 + (B_COORD[1]-A_COORD[1])**2)**0.5
+                # 현재 위치 초기화
+                traveled = 0.0
+                # 방향 단위 벡터
+                dx = (B_COORD[0]-A_COORD[0]) / total_dist if total_dist != 0 else 0
+                dy = (B_COORD[1]-A_COORD[1]) / total_dist if total_dist != 0 else 0
+
+                print("Start moving from A to B. total_dist:", total_dist)
+                while traveled < total_dist:
+                    # 속도 읽기 (m/s)
+                    v = get_speed_from_esp32()
+                    opc.write_speed(v)
+                    # 이동량
+                    step = v * DT
+                    traveled += step
+                    if traveled > total_dist:
+                        traveled = total_dist
+                    # 현재 좌표
+                    cur_x = A_COORD[0] + dx * traveled
+                    cur_y = A_COORD[1] + dy * traveled
+                    opc.write_position(cur_x, cur_y, 0.0)
+                    print(f"Sent pos x={cur_x:.3f}, y={cur_y:.3f}, speed={v:.3f}")
+                    time.sleep(DT)
+
+                # 루프 종료(도착 가정) — 실제로는 B 바코드로 확인하는 것이 안전
+                print("Reached B (by interpolation). Waiting for B barcode to confirm arrival.")
+                opc.write_status("ARRIVED_PENDING")  # 도착 대기 상태
+                # 여기서는 B 바코드가 실제로 읽힐 때까지 대기
+                # (옵션) 타임아웃 후 자동 도착 처리 가능
+
+            elif code.upper() == "B":
+                # 도착 처리
+                now = datetime.utcnow().isoformat()
+                opc.write_status("ARRIVED")
+                opc.write_arrival_time(now)
+                print("Arrival confirmed at", now)
+
+            else:
+                # 기타 바코드 처리
+                print("Unknown barcode. Written to LastBarcode node.")
+
+    except KeyboardInterrupt:
+        print("Interrupted.")
+    finally:
+        opc.close()
+        print("Bridge stopped.")
+
+if __name__ == "__main__":
+    run_bridge()
