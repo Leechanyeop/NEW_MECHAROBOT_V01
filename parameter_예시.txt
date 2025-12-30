@@ -173,3 +173,4 @@ message SystemState {
 
   int64 seq = 100;              // 상태 시퀀스 번호
 }
+Q

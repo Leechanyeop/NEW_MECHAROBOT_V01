@@ -3,8 +3,8 @@
   "WorkspaceRootPath": "C:\\#PROJECT\\NEW_MECHROBOT_V.01\\4.CRC_tel\\Request_Server\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{7F657488-963E-48D1-AD34-210431B762CE}|Request_Server\\Request_Server.csproj|c:\\#project\\new_mechrobot_v.01\\4.crc_tel\\request_server\\request_server\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{7F657488-963E-48D1-AD34-210431B762CE}|Request_Server\\Request_Server.csproj|solutionrelative:request_server\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{A8F34E2B-11D1-1B73-3C16-30A6BBCDCB43}|Request_Server\\Request_Server.csproj|c:\\#project\\new_mechrobot_v.01\\4.crc_tel\\request_server\\request_server\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A8F34E2B-11D1-1B73-3C16-30A6BBCDCB43}|Request_Server\\Request_Server.csproj|solutionrelative:request_server\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -23,7 +23,7 @@
           ]
         },
         {
-          "DockedWidth": 8,
+          "DockedWidth": 6,
           "SelectedChildIndex": -1,
           "Children": [
             {
@@ -40,12 +40,16 @@
             },
             {
               "$type": "Bookmark",
+              "Name": "ST:0:0:{34e76e81-ee4a-11d0-ae2e-00a0c90fffc3}"
+            },
+            {
+              "$type": "Bookmark",
               "Name": "ST:9:0:{d212f56b-c48a-434c-a121-1c5d80b59b9f}"
             }
           ]
         },
         {
-          "DockedWidth": 52,
+          "DockedWidth": 54,
           "SelectedChildIndex": 0,
           "Children": [
             {
@@ -56,7 +60,7 @@
               "RelativeDocumentMoniker": "Request_Server\\Program.cs",
               "ToolTip": "C:\\#PROJECT\\NEW_MECHROBOT_V.01\\4.CRC_tel\\Request_Server\\Request_Server\\Program.cs",
               "RelativeToolTip": "Request_Server\\Program.cs",
-              "ViewState": "AgIAAAcAAAAAAAAAAAAYwB4AAAAOAAAAAAAAAA==",
+              "ViewState": "AgIAACAAAAAAAAAAAAAgwBYAAAAeAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-12-28T12:30:30.074Z",
               "EditorCaption": ""
