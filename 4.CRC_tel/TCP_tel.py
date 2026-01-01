@@ -1,6 +1,6 @@
 import socket, struct, time
 
-ESP_IP = "192.168.0.78"
+ESP_IP = "192.168.0.66"
 ESP_PORT = 4210
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

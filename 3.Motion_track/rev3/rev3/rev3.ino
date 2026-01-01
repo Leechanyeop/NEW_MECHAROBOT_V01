@@ -9,11 +9,11 @@ AF_DCMotor motor4(4);
 
 // ===================== 5채널 디지털 센서 핀 (예시) =====================
 // 너 결선대로 바꿔줘!
-const int S0 = A1;  // Leftmost
-const int S1 = A2;  // Left
-const int S2 = A3;  // Center
-const int S3 = A4;  // Right
-const int S4 = A5;  // Rightmost
+const int S0 = 41;  // Leftmost
+const int S1 = 42;  // Left
+const int S2 = 43;  // Center
+const int S3 = 44;  // Right
+const int S4 = 45;  // Rightmost
 
 // ===================== 센서 논리 옵션 =====================
 // true  : 검정선 감지 = HIGH(1)
@@ -21,7 +21,7 @@ const int S4 = A5;  // Rightmost
 const bool SENSOR_ACTIVE_HIGH = true;
 
 // ===================== 주행 설정 =====================
-int speedVal = 140;      // 기본 속도(0~255)
+int speedVal = 150;      // 기본 속도(0~255)
 char lastCommand = 'A';  // 'A'=Auto PID, 'F','B','S' 수동
 
 // ===================== PID =====================
@@ -43,18 +43,18 @@ void stopAll() {
   motor3.run(RELEASE); motor4.run(RELEASE);
 }
 
-void forward() { // 실제로는 후진 (너 기준)
-  motor1.setSpeed(speedVal); motor2.setSpeed(speedVal);
-  motor3.setSpeed(speedVal); motor4.setSpeed(speedVal);
-  motor1.run(FORWARD); motor2.run(FORWARD);
-  motor3.run(FORWARD); motor4.run(FORWARD);
-}
-
-void backward() { // 실제로는 전진 (너 기준)
+void backward() { // 실제로는 후진 (너 기준)
   motor1.setSpeed(speedVal); motor2.setSpeed(speedVal);
   motor3.setSpeed(speedVal); motor4.setSpeed(speedVal);
   motor1.run(BACKWARD); motor2.run(BACKWARD);
   motor3.run(BACKWARD); motor4.run(BACKWARD);
+}
+
+void forward() { // 실제로는 전진 (너 기준)
+  motor1.setSpeed(speedVal); motor2.setSpeed(speedVal);
+  motor3.setSpeed(speedVal); motor4.setSpeed(speedVal);
+  motor1.run(FORWARD); motor2.run(FORWARD);
+  motor3.run(FORWARD); motor4.run(FORWARD);
 }
 
 // 좌/우 속도 차등 주행 (전진 방향은 BACKWARD로 고정)
@@ -64,15 +64,15 @@ void driveLR(int leftSp, int rightSp) {
 
   // 좌측: motor1, motor4 / 우측: motor2, motor3 (네 기구가 다르면 여기만 바꾸면 됨)
   motor1.setSpeed(leftSp);
-  motor4.setSpeed(leftSp);
   motor2.setSpeed(rightSp);
   motor3.setSpeed(rightSp);
+  motor4.setSpeed(leftSp);
 
   // 전진 방향(너 하드웨어 기준)
   motor1.run(BACKWARD);
-  motor4.run(BACKWARD);
   motor2.run(BACKWARD);
   motor3.run(BACKWARD);
+  motor4.run(BACKWARD);
 }
 
 // ===================== 5채널 디지털 읽기 =====================
@@ -92,9 +92,24 @@ uint8_t read5Bits(bool &anyOn) {
 
   anyOn = (b0 || b1 || b2 || b3 || b4);
 
-  // bit4..bit0 형태로 보기 좋게 구성
-  return (b0 ? 0x10 : 0) | (b1 ? 0x08 : 0) | (b2 ? 0x04 : 0) | (b3 ? 0x02 : 0) | (b4 ? 0x01 : 0);
-}
+  uint8_t bits = (b0 ? 0x10 : 0) | (b1 ? 0x08 : 0) | (b2 ? 0x04 : 0) | (b3 ? 0x02 : 0) | (b4 ? 0x01 : 0);
+
+  // --- 노이즈/엣지 패턴 보정 ---
+  if (bits == 0x1B) { // 11011 -> 00100
+    bits = 0x04;
+  }
+  if (bits == 0x11) { // 10001 -> 00100 (선택)
+    bits = 0x04;
+  }
+  // 필요하면 다른 패턴도 여기에 추가
+  // ------------------------------------
+
+  return bits;
+
+  }
+  // ---------------------------------------
+
+
 
 // ===================== ★ PID 라인추종 (디지털 5채널) =====================
 // 가중치: [-2, -1, 0, +1, +2]
@@ -123,7 +138,7 @@ float computeErrorFromBits(uint8_t bits, bool anyOn) {
 
   return pos; // -2 ~ +2 근처
 }
-
+//
 void lineFollowPID_5ch() {
   bool anyOn = false;
   uint8_t bits = read5Bits(anyOn);
@@ -149,13 +164,13 @@ void lineFollowPID_5ch() {
   // output 제한(너무 과격하면 튐)
   output = constrain(output, -120.0f, 120.0f);
 
-  int base = speedVal;
-  int leftSp  = base + (int)output;
-  int rightSp = base - (int)output;
+  int base = -speedVal;
+  int leftSp  = base - (int)output;
+  int rightSp = base + (int)output;
 
   // 최소 속도 보장
-  leftSp  = constrain(leftSp,  80, 255);
-  rightSp = constrain(rightSp, 80, 255);
+  leftSp  = constrain(leftSp,  180, 200);
+  rightSp = constrain(rightSp, 180, 200);
 
   driveLR(leftSp, rightSp);
 
@@ -186,14 +201,14 @@ void handleSerialCommand(char cmd) {
       break;
 
     case 'F': // 전진(너 하드웨어 기준: backward()가 전진)
-      lastCommand = 'F';
-      backward();
+      lastCommand = 'F'; 
+      forward();
       Serial.println("Command: Forward (your HW = backward())");
       break;
 
     case 'B': // 후진
       lastCommand = 'B';
-      forward();
+      backward();
       Serial.println("Command: Backward (your HW = forward())");
       break;
 
