@@ -1,16 +1,16 @@
 #include <SPI.h>
 
 // 엔코더 핀
-#define ENCODER_A 20
-#define ENCODER_B 21
+#define ENCODER_A 2
+#define ENCODER_B 3
 
 //PWM
-#define IN1_A     22
-#define IN2_A     23
-#define IN3_B     24
-#define IN4_B     25
-#define ENABLE_A  26
-#define ENABLE_B  27
+#define IN1_A  10   
+#define IN2_A  11   
+#define IN3_B  12   
+#define IN4_B  13   
+#define ENABLE_A 0 
+#define ENABLE_B 1
 
 volatile long encoderPos = 0;
 int pwmValue = 150;
