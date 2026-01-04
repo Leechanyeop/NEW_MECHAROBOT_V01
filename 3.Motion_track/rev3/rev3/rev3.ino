@@ -9,11 +9,11 @@ AF_DCMotor motor4(4);
 
 // ===================== 5채널 디지털 센서 핀 (예시) =====================
 // 너 결선대로 바꿔줘!
-const int S0 = 41;  // Leftmost
-const int S1 = 42;  // Left
-const int S2 = 43;  // Center
-const int S3 = 44;  // Right
-const int S4 = 45;  // Rightmost
+const int S0 = A0;  // Leftmost
+const int S1 = A1;  // Left
+const int S2 = A2;  // Center
+const int S3 = A3;  // Right
+const int S4 = A4;  // Rightmost
 
 // ===================== 센서 논리 옵션 =====================
 // true  : 검정선 감지 = HIGH(1)
@@ -21,7 +21,7 @@ const int S4 = 45;  // Rightmost
 const bool SENSOR_ACTIVE_HIGH = true;
 
 // ===================== 주행 설정 =====================
-int speedVal = 150;      // 기본 속도(0~255)
+int speedVal = 80;      // 기본 속도(0~255)
 char lastCommand = 'A';  // 'A'=Auto PID, 'F','B','S' 수동
 
 // ===================== PID =====================
@@ -36,6 +36,9 @@ unsigned long lastPidMs = 0;
 
 // 라인 유실 시 마지막 방향 기억
 int lastDirSign = 0; // -1:왼쪽, +1:오른쪽
+unsigned long tempStopStartMs = 0;
+const unsigned long TEMP_STOP_DURATION = 500; // 정지 지속 시간(ms). 필요시 값 변경
+bool tempStopped = false;
 
 // ===================== 모터 제어 (너 하드웨어 기준: BACKWARD가 전진) =====================
 void stopAll() {
@@ -43,14 +46,14 @@ void stopAll() {
   motor3.run(RELEASE); motor4.run(RELEASE);
 }
 
-void backward() { // 실제로는 후진 (너 기준)
+void forward() { // 실제로는 후진 (너 기준)
   motor1.setSpeed(speedVal); motor2.setSpeed(speedVal);
   motor3.setSpeed(speedVal); motor4.setSpeed(speedVal);
   motor1.run(BACKWARD); motor2.run(BACKWARD);
   motor3.run(BACKWARD); motor4.run(BACKWARD);
 }
 
-void forward() { // 실제로는 전진 (너 기준)
+void backward() { // 실제로는 전진 (너 기준)
   motor1.setSpeed(speedVal); motor2.setSpeed(speedVal);
   motor3.setSpeed(speedVal); motor4.setSpeed(speedVal);
   motor1.run(FORWARD); motor2.run(FORWARD);
@@ -72,6 +75,7 @@ void driveLR(int leftSp, int rightSp) {
   motor1.run(BACKWARD);
   motor2.run(BACKWARD);
   motor3.run(BACKWARD);
+
   motor4.run(BACKWARD);
 }
 
@@ -138,10 +142,60 @@ float computeErrorFromBits(uint8_t bits, bool anyOn) {
 
   return pos; // -2 ~ +2 근처
 }
-//
 void lineFollowPID_5ch() {
   bool anyOn = false;
   uint8_t bits = read5Bits(anyOn);
+
+  if ((bits == 0x1F || bits == 0x00) && !tempStopped) {
+    // 정지 시작
+    stopAll();
+    tempStopped = true;
+    tempStopStartMs = millis();
+    // 디버그 출력
+    Serial.print("TEMP STOP: ");
+    if (bits == 0x1F) Serial.println("ALL SENSORS ON (11111)");
+    else Serial.println("ALL SENSORS OFF (00000)");
+    return; // 이번 사이클은 정지 상태로 끝냄
+  }
+
+  // ---------------------------------------------
+
+  // 이미 임시 정지 중이면 지속 시간 체크
+    if (tempStopped) {
+      if (millis() - tempStopStartMs < TEMP_STOP_DURATION) {
+        // 아직 정지 유지: 모터는 이미 stopAll() 상태이므로 아무것도 하지 않고 리턴
+        return;
+      } else {
+        // 정지 시간 경과: 정지 플래그 해제하고 PID 재개
+        tempStopped = false;
+        Serial.println("TEMP STOP END -> resume PID");
+        // PID 변수 초기화(원하면)
+        integral = 0.0f;
+        lastError = 0.0f;
+        lastPidMs = millis();
+        // 이후 PID 제어 로직이 계속 실행됨
+      }
+    }
+    // ---------------------------------------------
+
+  if (bits == 0x04) { // 00100 -> 중앙 감지
+  Serial.println("RESUME: center detected (00100) -> Auto (forward)");
+  integral = 0.0f;
+  lastError = 0.0f;
+  lastPidMs = millis();
+  lastCommand = 'A';
+  forward(); // 변경: 전진 호출
+}
+
+
+
+
+
+
+
+
+
+
 
   // dt
   unsigned long now = millis();
@@ -154,21 +208,18 @@ void lineFollowPID_5ch() {
 
   // PID
   integral += error * dt;
-  integral = constrain(integral, -3.0f, 3.0f); // 디지털이라 적분 제한을 작게
+  integral = constrain(integral, -3.0f, 3.0f);
 
   float derivative = (error - lastError) / dt;
   lastError = error;
 
   float output = Kp * error + Ki * integral + Kd * derivative;
-
-  // output 제한(너무 과격하면 튐)
   output = constrain(output, -120.0f, 120.0f);
 
   int base = -speedVal;
   int leftSp  = base - (int)output;
   int rightSp = base + (int)output;
 
-  // 최소 속도 보장
   leftSp  = constrain(leftSp,  180, 200);
   rightSp = constrain(rightSp, 180, 200);
 
@@ -178,7 +229,6 @@ void lineFollowPID_5ch() {
   static unsigned long lastPrint = 0;
   if (millis() - lastPrint > 200) {
     Serial.print("BITS: ");
-    // 5비트 출력(좌->우)
     Serial.print((bits & 0x10) ? "1" : "0");
     Serial.print((bits & 0x08) ? "1" : "0");
     Serial.print((bits & 0x04) ? "1" : "0");
@@ -219,7 +269,7 @@ void handleSerialCommand(char cmd) {
       break;
 
     case '+':
-      speedVal = min(255, speedVal + 10);
+      speedVSal = min(255, speedVal + 10);
       Serial.print("Speed: "); Serial.println(speedVal);
       break;
 
@@ -255,6 +305,21 @@ void loop() {
 
   if (lastCommand == 'A') {
     lineFollowPID_5ch();
+  } else if (lastCommand == 'S') {
+    // STOP 상태에서도 센서값을 주기적으로 확인하여
+    // 중앙(00100) 감지 시 자동 모드로 복귀
+    bool anyOn = false;
+    uint8_t bits = read5Bits(anyOn);
+
+    if (bits == 0x04) { // 00100 -> 중앙 감지
+      Serial.println("RESUME: center detected (00100) -> Auto");
+      // PID 상태 초기화(급격한 출력 방지)
+      integral = 0.0f;
+      lastError = 0.0f;
+      lastPidMs = millis();
+      lastCommand = 'A';
+      // 다음 루프에서 바로 lineFollowPID_5ch()가 실행됩니다.
+    }
   }
 
   delay(10);
