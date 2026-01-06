@@ -1,0 +1,5 @@
+ESP32
+
+Sensor_recog 적외선 센서 값 리드인코더값 리딩
+motion_trace 좌표계산 및 주행명령 각도 계산
+CLC TELL서버로 부터 명령 받고 주행처리

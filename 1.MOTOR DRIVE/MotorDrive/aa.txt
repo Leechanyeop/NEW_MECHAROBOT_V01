@@ -1,0 +1,218 @@
+검색 결과를 바탕으로 ESP32에서 Modbus TCP로 OPC UA 서버에 데이터를 전송하기 위한 구성 요소들을 정리해 드리겠습니다.
+
+## ESP32 → Modbus TCP → OPC UA 서버 아키텍처
+
+### 전체 구조
+
+```
+┌─────────────┐     Modbus TCP      ┌─────────────────┐     OPC UA      ┌─────────────┐
+│   ESP32     │────────────────────▶│  KEPServerEX    │────────────────▶│  OPC UA     │
+│ (Modbus     │     Port 502        │  (Modbus TCP    │                 │  Client     │
+│  Server)    │                     │   → OPC UA)     │                 │  (UAExpert) │
+└─────────────┘                     └─────────────────┘                 └─────────────┘
+```
+
+---
+
+## 1. ESP32 측 (Modbus TCP Server)
+
+### 필요한 라이브러리
+
+**추천: eModbus 라이브러리**
+- GitHub: https://github.com/eModbus/eModbus
+- Modbus client, server, bridge/gateway 기능을 RTU, ASCII, TCP 프로토콜에 대해 제공
+
+**대안: modbus-esp8266 라이브러리**
+- GitHub: https://github.com/emelianov/modbus-esp8266
+- Arduino용으로 가장 완벽한 Modbus 라이브러리로, master/slave 양쪽 모드와 TCP/RTU 프로토콜을 지원
+
+### ESP32 Modbus TCP Server 기본 설정
+
+```cpp
+#include <WiFi.h>
+#include <ModbusServerTCPtemp.h>  // eModbus
+
+// WiFi 설정
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
+
+// Modbus Server 생성 (포트 502)
+ModbusServerTCPtemp<10> MBserver;  // 최대 10개 클라이언트
+
+// 레지스터 데이터
+uint16_t holdingRegisters[100];
+uint16_t inputRegisters[100];
+bool coils[100];
+bool discreteInputs[100];
+
+void setup() {
+  // WiFi 연결
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  
+  // Modbus 서버 시작 (포트 502)
+  MBserver.start(502, 1, 20000);  // port, serverID, timeout
+  
+  // Function Code 핸들러 등록
+  MBserver.registerWorker(1, READ_HOLD_REGISTER, &FC03);
+  MBserver.registerWorker(1, WRITE_HOLD_REGISTER, &FC06);
+  MBserver.registerWorker(1, WRITE_MULT_REGISTERS, &FC16);
+}
+```
+
+### 필수 Modbus Function Codes
+
+| FC | 기능 | 설명 |
+|---|------|------|
+| 01 | Read Coils | 디지털 출력 읽기 |
+| 02 | Read Discrete Inputs | 디지털 입력 읽기 |
+| 03 | Read Holding Registers | 아날로그 출력/데이터 읽기 |
+| 04 | Read Input Registers | 아날로그 입력 읽기 |
+| 05 | Write Single Coil | 단일 디지털 출력 쓰기 |
+| 06 | Write Single Register | 단일 레지스터 쓰기 |
+| 15 | Write Multiple Coils | 다중 디지털 출력 쓰기 |
+| 16 | Write Multiple Registers | 다중 레지스터 쓰기 |
+
+---
+
+## 2. KEPServerEX 측 (Modbus TCP Client → OPC UA Server)
+
+### KEPServerEX 설정 단계
+
+**1) 채널 생성**
+- 새 Modbus 채널을 생성하고 "Modbus TCP/IP Ethernet" 옵션을 선택
+- 올바른 네트워크 어댑터를 선택
+
+**2) 디바이스 추가**
+- Device ID: ESP32의 IP 주소와 Unit ID 설정 (예: 192.168.1.100.1)
+- Modbus TCP 포트: 502 사용, IP Protocol을 TCP/IP로 선택
+
+**3) 태그 생성**
+
+| Modbus 주소 형식 | 설명 |
+|-----------------|------|
+| `0xxxxx` | Coils (FC01/05/15) |
+| `1xxxxx` | Discrete Inputs (FC02) |
+| `3xxxxx` | Input Registers (FC04) |
+| `4xxxxx` | Holding Registers (FC03/06/16) |
+
+예시:
+- `400001` → Holding Register 0번
+- `400010` → Holding Register 9번
+- `300001` → Input Register 0번
+
+---
+
+## 3. 네트워크 설정 요약
+
+| 구성요소 | 설정 | 값 |
+|---------|-----|-----|
+| ESP32 | IP 주소 | 고정 IP 권장 (예: 192.168.1.100) |
+| ESP32 | Modbus TCP 포트 | 502 (기본) |
+| ESP32 | Unit ID | 1 (기본) |
+| KEPServerEX | Device ID | {ESP32_IP}.{Unit_ID} |
+| KEPServerEX | OPC UA 포트 | 49320 (기본) |
+
+---
+
+## 4. 완전한 ESP32 예제 코드 (eModbus 사용)
+
+```cpp
+#include <WiFi.h>
+#include "ModbusServerTCPtemp.h"
+
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+ModbusServerTCPtemp<4> MBserver;
+
+// 데이터 저장용 레지스터
+uint16_t holdingRegs[10] = {0, 100, 200, 300, 400, 500, 600, 700, 800, 900};
+
+// FC03 - Holding Register 읽기 핸들러
+ModbusMessage FC03(ModbusMessage request) {
+  ModbusMessage response;
+  uint16_t addr = 0;
+  uint16_t words = 0;
+  
+  request.get(2, addr);
+  request.get(4, words);
+  
+  if (addr + words <= 10) {
+    response.add(request.getServerID(), request.getFunctionCode(), (uint8_t)(words * 2));
+    for (uint16_t i = 0; i < words; i++) {
+      response.add(holdingRegs[addr + i]);
+    }
+  } else {
+    response.setError(request.getServerID(), request.getFunctionCode(), ILLEGAL_DATA_ADDRESS);
+  }
+  return response;
+}
+
+// FC06 - 단일 레지스터 쓰기 핸들러
+ModbusMessage FC06(ModbusMessage request) {
+  ModbusMessage response;
+  uint16_t addr = 0;
+  uint16_t value = 0;
+  
+  request.get(2, addr);
+  request.get(4, value);
+  
+  if (addr < 10) {
+    holdingRegs[addr] = value;
+    response.add(request.getServerID(), request.getFunctionCode(), addr, value);
+  } else {
+    response.setError(request.getServerID(), request.getFunctionCode(), ILLEGAL_DATA_ADDRESS);
+  }
+  return response;
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
+  
+  // Modbus 서버 시작
+  MBserver.registerWorker(1, READ_HOLD_REGISTER, &FC03);
+  MBserver.registerWorker(1, WRITE_HOLD_REGISTER, &FC06);
+  MBserver.start(502, 1, 20000);
+  
+  Serial.println("Modbus TCP Server started on port 502");
+}
+
+void loop() {
+  // 센서 데이터 업데이트 예시
+  holdingRegs[0] = analogRead(34);  // 아날로그 센서
+  holdingRegs[1] = millis() / 1000; // 가동 시간
+  
+  delay(100);
+}
+```
+
+---
+
+## 5. 체크리스트
+
+### ESP32 측
+- [ ] WiFi 연결 확인
+- [ ] 고정 IP 설정 (DHCP 대신)
+- [ ] Modbus TCP Server 포트 502 열림
+- [ ] Unit ID 설정 (기본 1)
+- [ ] Function Code 핸들러 등록
+- [ ] 레지스터 주소 매핑 문서화
+
+### KEPServerEX 측
+- [ ] Modbus TCP/IP Ethernet 드라이버 설치
+- [ ] 올바른 네트워크 어댑터 선택
+- [ ] Device ID 형식: `IP주소.UnitID`
+- [ ] 태그 주소 형식 확인 (0-based vs 1-based)
+- [ ] OPC UA Server 활성화 확인
+
+KEPServerEX에서 진행하던 OPC UA 설정 경험이 있으니, Modbus TCP 채널만 추가로 생성하면 기존 OPC UA 인프라를 그대로 활용할 수 있습니다.
