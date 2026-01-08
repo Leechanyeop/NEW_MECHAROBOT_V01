@@ -1,0 +1,44 @@
+Walkthrough - BTS7960 Motor Control Implementation
+Refactored the motor control system to use BTS7960 drivers on an Arduino Mega 2560, controlled via SPI from an Arduino UNO WiFi.
+
+Changes Made
+MotorDrive Library Refactoring
+The 
+MotorDrive
+ library was updated to support the 4-pin control logic required by BTS7960 (L_EN, R_EN, LPWM, RPWM).
+
+MotorDrive.h
+: Updated constructor and member variables to handle 8 pins in total (4 per motor).
+MotorDrive.cpp
+: Implemented BTS7960 drive logic. Forward/Backward is now controlled by swapping PWM signals between LPWM and RPWM pins.
+Mega Controller Update
+MotorDrive_Mega.ino
+:
+Updated with the user's specific pin assignments.
+Added extensive comments explaining the SPI wiring and command protocol.
+Pin Configuration (BTS7960)
+Driver	Pin Name	Mega Pin
+1 (Left)	R_EN	5
+L_EN	4
+RPWM	7
+LPWM	6
+2 (Right)	R_EN2	10
+L_EN2	11
+RPWM2	12
+LPWM2	13
+SPI Protocol Summary
+The following commands are supported via SPI (1 byte each):
+
+w / s: Forward / Backward
+a / d: Turn Left / Turn Right
+x: Stop
++ / -: Speed Up / Speed Down
+l / p: Line Trace / PID Line Trace
+The Slave (Mega) responds with 4 bytes representing the current encoderPos (long).
+
+Manual Verification Results
+ Compilation: 
+MotorDrive_Mega.ino
+ compiles successfully for Mega 2560.
+ Logic Check: PWM signals correctly map to direction pins for BTS7960.
+ Documentation: SPI protocol and wiring are clearly documented in the source code.

@@ -33,15 +33,17 @@
  */
 class MotorDrive {
 private:
-    // 모터 A 핀 (왼쪽 모터)
-    int _in1;
-    int _in2;
-    int _ena;
+    // 모터 A 핀 (BTS7960 드라이버 1)
+    int _r_en1;
+    int _l_en1;
+    int _rpwm1;
+    int _lpwm1;
 
-    // 모터 B 핀 (오른쪽 모터)
-    int _in3;
-    int _in4;
-    int _enb;
+    // 모터 B 핀 (BTS7960 드라이버 2)
+    int _r_en2;
+    int _l_en2;
+    int _rpwm2;
+    int _lpwm2;
 
     // 라인 센서 핀 배열
     int _lineSensorPins[LINE_SENSOR_COUNT];
@@ -64,13 +66,14 @@ private:
 
 public:
     /**
-     * @brief 생성자 - 모터 핀 설정
-     * @param in1, in2 모터 A 방향 핀
-     * @param ena 모터 A PWM 핀
-     * @param in3, in4 모터 B 방향 핀
-     * @param enb 모터 B PWM 핀
+     * @brief 생성자 - BTS7960 모터 핀 설정
+     * @param r_en1, l_en1 모터 1 이네이블 핀
+     * @param rpwm1, lpwm1 모터 1 PWM 핀
+     * @param r_en2, l_en2 모터 2 이네이블 핀
+     * @param rpwm2, lpwm2 모터 2 PWM 핀
      */
-    MotorDrive(int in1, int in2, int ena, int in3, int in4, int enb);
+    MotorDrive(int r_en1, int l_en1, int rpwm1, int lpwm1, 
+               int r_en2, int l_en2, int rpwm2, int lpwm2);
 
     /**
      * @brief 모터 드라이버 초기화

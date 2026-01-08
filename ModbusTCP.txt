@@ -1,0 +1,9 @@
+주소      | 데이터 이름          | 타입        | 단위/예시 값       | 설명
+----------|----------------------|-------------|--------------------|------------------------
+40001-40002 | Robot.Position.X     | Float (32bit) | m (예: 1.25)       | 로봇 X 좌표
+40003-40004 | Robot.Position.Y     | Float (32bit) | m (예: 0.75)       | 로봇 Y 좌표
+40005-40006 | Robot.Position.Theta | Float (32bit) | deg (예: 90.0)     | 로봇 방향 각도
+40007       | Robot.Speed          | Int16        | cm/s 또는 m/s      | 로봇 속도
+40008       | Robot.Status         | Int16 (코드) | 0=IDLE, 1=RUNNING, 2=ARRIVED | 로봇 상태
+40009-40020 | Robot.LastBarcode    | String (ASCII) | "BC12345"          | 마지막 읽은 바코드 값
+40021-40026 | Robot.ArrivalTime    | String/DateTime | "2026-01-06 10:45" | 도착 시각

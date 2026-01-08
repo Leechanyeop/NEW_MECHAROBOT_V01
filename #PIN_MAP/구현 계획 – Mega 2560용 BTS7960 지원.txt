@@ -1,0 +1,37 @@
+구현 계획 – Mega 2560용 BTS7960 지원
+이 계획은 모터 드라이버 로직을 L298N에서 BTS7960으로 전환하고, SPI 제어 Mega 스케치를 업데이트하기 위해 필요한 변경 사항을 설명합니다.
+사용자 검토 필요
+중요
+MotorDrive 라이브러리는 BTS7960 드라이버에 필요한 4핀 제어(L_EN, R_EN, LPWM, RPWM)를 지원하도록 리팩터링됩니다. 이는 기존의 3핀 L298N 로직(IN1, IN2, ENA)을 대체합니다.
+
+제안된 변경 사항
+MotorDrive 라이브러리
+- [수정] MotorDrive.h
+- 생성자 시그니처를 8핀(모터당 4핀)을 받도록 업데이트
+- BTS7960 명명 규칙에 맞게 private 멤버 변수 업데이트
+- [수정] MotorDrive.cpp
+- 생성자와 begin()을 업데이트하여 BTS7960 핀 초기화
+- setMotorA, setMotorB에 BTS7960 전용 구동 로직 구현
+- 전진: LPWM = speed, RPWM = 0, L_EN = HIGH, R_EN = HIGH
+- 후진: LPWM = 0, RPWM = speed, L_EN = HIGH, R_EN = HIGH
+- 정지: LPWM = 0, RPWM = 0 (EN 핀은 선택적으로 유지 가능)
+
+Mega 컨트롤러
+- [수정] MotorDrive_Mega.ino
+- 두 개의 BTS7960 드라이버용 핀 정의 업데이트 (사용자 요청 반영)
+- MotorDrive 객체 인스턴스화 업데이트
+- SPI 명령 프로토콜에 대한 상세 주석 추가
+
+검증 계획
+자동화 테스트
+- 해당 하드웨어 프로젝트에는 자동화 테스트 없음 → 검증은 수동으로 진행
+수동 검증
+- 컴파일 확인: MotorDrive_Mega.ino와 업데이트된 라이브러리가 Arduino Mega 2560에서 오류 없이 컴파일되는지 확인
+- 모터 방향 테스트:
+- SPI로 'w'(전진) 전송 → 두 모터가 전진하는지 확인
+- 's'(후진) 전송 → 두 모터가 후진하는지 확인
+- 'a'/'d' 전송 → 회전 동작 확인
+- 속도 제어 테스트:
+- '+'와 '-'를 여러 번 전송하여 PWM 속도 변화 확인
+- SPI 모니터링:
+- Mega Serial Monitor에서 [SPI] Received 로그 관찰

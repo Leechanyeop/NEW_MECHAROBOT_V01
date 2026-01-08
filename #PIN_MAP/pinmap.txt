@@ -1,0 +1,49 @@
+const int m1ENA = 8;
+const int m1ENB = 9;
+const int m1IN1 = 10;
+const int m1IN2 = 11;
+const int m1IN3 = 12;
+const int m1IN4 = 13;
+
+// 모듈2 핀 (Mega2560은 핀이 많으니 다른 번호 사용)
+const int m2ENA = 22;
+const int m2ENB = 23;
+const int m2IN1 = 24;
+const int m2IN2 = 25;
+const int m2IN3 = 26;
+const int m2IN4 = 27;
+
+m1
+M+
+GND
+B
+A
+VCC
+M-
+
+m2
+M+
+GND
+B
+A
+VCC
+M-
+
+
+
+m3
+M+
+GND
+B
+A
+VCC
+M-
+
+
+m4
+M+
+GND
+B
+A
+VCC
+M-
