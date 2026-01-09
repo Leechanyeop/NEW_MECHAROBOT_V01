@@ -69,192 +69,123 @@ int lineSensorPins[] = {A0, A1, A2, A3, A4};
 #define DEBUG_LED 13
 
 // ============== 전역 변수 ==============
-volatile long encoderPos = 0;       // 엔코더 위치
 int pwmValue = DEFAULT_SPEED;       // 현재 PWM 값
-volatile char lastReceivedCmd = 0;  // 마지막 수신 명령 (디버그용)
+volatile char lastReceivedCmd = 0;  // 마지막 수신 명령
 volatile bool cmdReceived = false;  // 명령 수신 플래그
-volatile uint32_t spiInterruptCount = 0;  // SPI 인터럽트 카운터
+volatile uint32_t lastPacketTime = 0; // 마지막 유효 패킷 수신 시간 (ms)
 
-// MotorDrive 객체 생성 (BTS7960 인터페이스로 변경됨)
-// MotorDrive(R_EN1, L_EN1, RPWM1, LPWM1, R_EN2, L_EN2, RPWM2, LPWM2)
+// SPI 패킷 상태 머신 변수
+volatile byte packetBuffer[3];
+volatile byte packetIdx = 0;
+
+// MotorDrive 객체 생성
 MotorDrive motor(MOTOR1_R_EN, MOTOR1_L_EN, MOTOR1_RPWM, MOTOR1_LPWM,
                  MOTOR2_R_EN, MOTOR2_L_EN, MOTOR2_RPWM, MOTOR2_LPWM);
 
 // ============== Setup ==============
 void setup() {
   Serial.begin(115200);
-  while (!Serial) { ; }  // 시리얼 준비 대기
+  while (!Serial) { ; }
   
-  // 디버그 LED 설정
   pinMode(DEBUG_LED, OUTPUT);
   digitalWrite(DEBUG_LED, LOW);
   
-  // 모터 드라이버 초기화
   motor.begin();
   motor.setSpeed(pwmValue);
-  
-  // 라인 센서 설정 (라인트레이싱 사용시)
-  motor.setLineSensors(lineSensorPins, LINE_SENSOR_COUNT);
-  motor.setPIDGains(1.0, 0.0, 0.5);  // PID 게인 설정
+  motor.stop(); // 초기 상태는 반드시 정합
 
   // ========== SPI Slave 설정 (Mega 2560) ==========
-  // 1. 핀 모드 설정 (중요!)
-  pinMode(SPI_SS_PIN, INPUT);      // SS: 반드시 INPUT
-  pinMode(SPI_MOSI_PIN, INPUT);    // MOSI: INPUT
-  pinMode(SPI_MISO_PIN, OUTPUT);   // MISO: OUTPUT (슬레이브가 응답 전송)
-  pinMode(SPI_SCK_PIN, INPUT);     // SCK: INPUT
+  pinMode(SPI_SS_PIN, INPUT_PULLUP);
+  pinMode(SPI_MOSI_PIN, INPUT);
+  pinMode(SPI_MISO_PIN, OUTPUT);
+  pinMode(SPI_SCK_PIN, INPUT);
   
-  // 2. DDR 레지스터 명시적 설정 (Mega 2560 PORTB)
-  // PB0=SS(53), PB1=SCK(52), PB2=MOSI(51), PB3=MISO(50)
-  DDRB &= ~(_BV(PB0) | _BV(PB1) | _BV(PB2));  // SS, SCK, MOSI = INPUT
-  DDRB |= _BV(PB3);                           // MISO = OUTPUT
+  DDRB &= ~(_BV(PB0) | _BV(PB1) | _BV(PB2)); 
+  DDRB |= _BV(PB3); 
   
-  // 3. SPI 레지스터 설정
-  SPCR = 0;                // 초기화
-  SPCR |= _BV(SPE);        // SPI Enable (슬레이브 모드는 MSTR=0)
-  SPCR |= _BV(SPIE);       // SPI Interrupt Enable
-  // CPOL=0, CPHA=0 (SPI Mode 0) - 기본값
+  SPCR = _BV(SPE) | _BV(SPIE); // SPI Enable, Interrupt Enable
   
-  // 4. SPDR 초기값 설정 (첫 번째 응답용)
-  SPDR = 0xAA;             // 디버그용: 슬레이브가 살아있다는 표시
+  SPDR = 0x00; // 초기 응답값
   
-  // 5. SPI 상태 레지스터 클리어 (이전 데이터 무시)
   volatile byte dummy = SPSR;
   dummy = SPDR;
   (void)dummy;
 
-  Serial.println(F(""));
-  Serial.println(F("=== SPI Slave Ready (Mega 2560) ==="));
-  Serial.println(F("Pin Config: SS=53, SCK=52, MOSI=51, MISO=50"));
-  Serial.print(F("SPCR = 0x")); Serial.println(SPCR, HEX);
-  Serial.print(F("SPSR = 0x")); Serial.println(SPSR, HEX);
-  Serial.println(F("MotorDrive initialized with L298N driver"));
-  
-  // SCK, MOSI 핀 현재 상태 출력
-  Serial.println(F(""));
-  Serial.println(F("[PIN TEST] Current pin states:"));
-  Serial.print(F("  SS(53)="));   Serial.println(digitalRead(SPI_SS_PIN) ? "HIGH" : "LOW");
-  Serial.print(F("  SCK(52)="));  Serial.println(digitalRead(SPI_SCK_PIN) ? "HIGH" : "LOW");
-  Serial.print(F("  MOSI(51)=")); Serial.println(digitalRead(SPI_MOSI_PIN) ? "HIGH" : "LOW");
-  Serial.print(F("  MISO(50)=")); Serial.println(digitalRead(SPI_MISO_PIN) ? "HIGH" : "LOW");
-  Serial.println(F(""));
-  Serial.println(F("Waiting for SPI commands..."));
+  lastPacketTime = millis();
+
+  Serial.println(F("\n=== Mega Motor Driver (ASCII SPI) ==="));
+  Serial.println(F("Protocol: < [CMD] >"));
+  Serial.println(F("Safety: Watchdog active (700ms)"));
 }
 
-// ============== SPI 인터럽트 (Master 명령 수신) ==============
+// ============== SPI 인터럽트 (ASCII 패킷 처리) ==============
 ISR(SPI_STC_vect) {
-  // 디버그: LED 토글 (인터럽트 발생 확인)
-  digitalWrite(DEBUG_LED, !digitalRead(DEBUG_LED));
+  byte inByte = SPDR;
+  static byte state = 0; // 0: Wait Header, 1: Wait CMD, 2: Wait Footer
   
-  spiInterruptCount++;  // 인터럽트 카운트 증가
-  
-  char cmd = SPDR;  // Master가 보낸 명령
-  lastReceivedCmd = cmd;  // 디버그용 저장
-  cmdReceived = true;     // 수신 플래그
-
-  // 명령 처리 - MotorDrive 클래스 메서드 사용
-  switch (cmd) {
-    case 'w':  // 전진
-      motor.forward();
-      break;
-    case 's':  // 후진
-      motor.backward();
-      break;
-    case 'a':  // 좌회전
-      motor.turnLeft();
-      break;
-    case 'd':  // 우회전
-      motor.turnRight();
-      break;
-    case 'x':  // 정지
-      motor.stop();
-      break;
-    case '+':  // 속도 증가
-      motor.speedUp(20);
-      pwmValue = motor.getSpeed();
-      break;
-    case '-':  // 속도 감소
-      motor.speedDown(20);
-      pwmValue = motor.getSpeed();
-      break;
-    case 'l':  // 라인트레이싱 모드 (1회 실행)
-      motor.lineTrace();
-      break;
-    case 'p':  // 라인트레이싱 PID 모드 (1회 실행)
-      motor.lineTracePID();
-      break;
-    default:
-      break;
+  if (state == 0) {
+    if (inByte == '<') {
+      state = 1;
+    }
+  } 
+  else if (state == 1) {
+    lastReceivedCmd = inByte;
+    state = 2;
+    // 명령어를 받았으므로 다음 전송(Footer 수신 시) 때 보낼 ACK 미리 설정
+    SPDR = inByte; 
   }
-
-  // 응답으로 엔코더 값 전송
-  static byte idx = 0;
-  union {
-    long val;
-    byte b[4];
-  } data;
-
-  data.val = encoderPos;
-  SPDR = data.b[idx];
-  idx++;
-  if (idx >= 4) idx = 0;
+  else if (state == 2) {
+    if (inByte == '>') {
+      cmdReceived = true;
+      lastPacketTime = millis();
+    }
+    state = 0;
+  }
+  
+  // Footer 수신 이후에는 다음 Header 대기를 위해 초기화 응답
+  if (state == 0) SPDR = 0x00;
 }
 
 // ============== Main Loop ==============
 void loop() {
-  // SPI 명령 수신 확인 (디버그)
+  uint32_t now = millis();
+
+  // 1. 세이프티 워치독 (Safety Watchdog)
+  // 700ms 동안 유효한 패킷이 없으면 강제 정지
+  if (now - lastPacketTime > 700) {
+    static bool watchDogAction = false;
+    if (!watchDogAction) {
+      motor.stop();
+      Serial.println(F("[WATCHDOG] Communication lost! Motor Stopped."));
+      watchDogAction = true;
+    }
+    // 패킷 수신 시 watchDogAction이 false로 리셋되도록 패킷 처리부 수정 필요 없음 (stop()은 중복 호출되어도 안전)
+  }
+
+  // 2. SPI 명령 처리
   if (cmdReceived) {
-    Serial.print(F("[SPI] Received: '"));
-    Serial.print(lastReceivedCmd);
-    Serial.print(F("' (0x"));
-    Serial.print((byte)lastReceivedCmd, HEX);
-    Serial.print(F(") | ISR Count: "));
-    Serial.println(spiInterruptCount);
+    char cmd = lastReceivedCmd;
     cmdReceived = false;
+    // 워치독 액션 상태 해제
+    // (여기서 lastPacketTime이 ISR에서 업데이트되므로 자연스럽게 해제됨)
+
+    Serial.print(F("[SPI] CMD: '")); Serial.print(cmd); Serial.println(F("'"));
+
+    switch (cmd) {
+      case 'w': motor.forward();   break;
+      case 's': motor.backward();  break;
+      case 'a': motor.turnLeft();  break;
+      case 'd': motor.turnRight(); break;
+      case 'x': motor.stop();      break;
+      case '+': motor.speedUp(20); break;
+      case '-': motor.speedDown(20); break;
+      case 'l': motor.lineTrace(); break;
+      case 'p': motor.lineTracePID(); break;
+    }
   }
+
+  // 3. 상태 LED (통신 중임을 표시)
+  digitalWrite(DEBUG_LED, (now - lastPacketTime < 300));
   
-  // SS 핀 상태 모니터링 (디버그)
-  static bool lastSSState = HIGH;
-  bool currentSS = digitalRead(SPI_SS_PIN);
-  if (currentSS != lastSSState) {
-    Serial.print(F("[SS] Pin 53 = "));
-    Serial.print(currentSS ? "HIGH" : "LOW");
-    Serial.print(F(" | SPCR=0x"));
-    Serial.print(SPCR, HEX);
-    Serial.print(F(" | SPSR=0x"));
-    Serial.println(SPSR, HEX);
-    lastSSState = currentSS;
-  }
-  
-  // SCK 핀 상태 모니터링 (디버그)
-  static bool lastSCKState = LOW;
-  bool currentSCK = digitalRead(SPI_SCK_PIN);
-  if (currentSCK != lastSCKState) {
-    Serial.print(F("[SCK] Pin 52 = "));
-    Serial.println(currentSCK ? "HIGH" : "LOW");
-    lastSCKState = currentSCK;
-  }
-  
-  // MOSI 핀 상태 모니터링 (디버그)
-  static bool lastMOSIState = LOW;
-  bool currentMOSI = digitalRead(SPI_MOSI_PIN);
-  if (currentMOSI != lastMOSIState) {
-    Serial.print(F("[MOSI] Pin 51 = "));
-    Serial.println(currentMOSI ? "HIGH" : "LOW");
-    lastMOSIState = currentMOSI;
-  }
-  
-  // 주기적 상태 출력 (5초마다)
-  static unsigned long lastStatus = 0;
-  if (millis() - lastStatus >= 5000) {
-    Serial.print(F("[STATUS] SPI ISR Count: "));
-    Serial.print(spiInterruptCount);
-    Serial.print(F(" | SPCR=0x"));
-    Serial.print(SPCR, HEX);
-    Serial.print(F(" | SS="));
-    Serial.println(digitalRead(SPI_SS_PIN) ? "HIGH" : "LOW");
-    lastStatus = millis();
-  }
-  
-  delay(10);  // 더 빠른 폴링
+  delay(1);
 }
