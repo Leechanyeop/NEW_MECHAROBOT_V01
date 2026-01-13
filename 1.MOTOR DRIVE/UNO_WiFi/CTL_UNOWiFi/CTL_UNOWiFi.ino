@@ -1,54 +1,36 @@
 /**
  * @file CTL_UNOWiFi.ino
- * @brief Arduino UNO WiFi Rev2 SPI Master - Motor Controller + 2 Encoders
- * @version 1.1
+ * @brief UNO WiFi Rev2 Main Controller
  * 
- * [중요: UNO WiFi Rev2 배선 주의사항]
- * UNO WiFi Rev2는 일반 UNO와 달리 디지털 11, 12, 13번 핀에 SPI가 연결되어 있지 않습니다.
- * 반드시 보드 중앙의 6핀 ICSP 헤더를 사용해야 합니다.
- * 
- * SPI 연결 (ICSP 헤더 위에서 보았을 때):
- *   (1) MISO [● 1] [2 ●] VCC      (3) SCK  [● 3] [4 ●] MOSI
- *   (5) RESET[● 5] [6 ●] GND       * SS는 디지털 핀 사용
- * 
- * 배선표:
- *   UNO WiFi Rev2 ICSP     Arduino Mega 2560
- *   ------------------     -----------------
- *   Pin 3 (SCK)        ->  Pin 52 (SCK)
- *   Pin 4 (MOSI)       ->  Pin 51 (MOSI)
- *   Pin 1 (MISO)       <-  Pin 50 (MISO)
- *   Pin 8 (SS)         ->  Pin 53 (SS)
- *   Pin 6 (GND)        --  GND (공통)
- * 
- * 엔코더 연결 (인터럽트 지원 핀):
- *   Encoder 1: Pin 2 (A), Pin 4 (B)
- *   Encoder 2: Pin 3 (A), Pin 5 (B)
+ * 기능:
+ * 1. WiFi TCP 서버 (8888번) -> PC에서 'w' 등을 보내면 로봇 제어
+ * 2. SPI 마스터 -> Mega 2560으로 명령 전송
+ * 3. 엔코더 값 항시 출력 (시리얼 모니터)
  */
 
 #include <SPI.h>
 #include <WiFiNINA.h>
-#include <ArduinoRS485.h> // ArduinoModbus 의존성
 #include <ArduinoModbus.h>
-#include "SendOPC.h"
 
 // ============== WiFi 설정 ==============
-char ssid[] = "codelab";      // 와이파이 이름
-char pass[] = "20380800";  // 와이파이 비밀번호
+char ssid[] = "hhme";       // 와이파이 이름
+char pass[] = "hme*12345";  // 와이파이 비밀번호
 int status = WL_IDLE_STATUS;
+
 WiFiServer server(8888);        // 8888번 포트 TCP 서버 (CMD 제어용)
-ModbusTCPServer modbusServer;   // Modbus TCP 서버 (포트 502)
+ModbusTCPServer modbusServer;   // Modbus TCP 서버 (포트 502) - 필요한 경우 사용
 
 // ============== 기본 설정 ==============
-#define DEFAULT_SPEED 200
+#define DEFAULT_SPEED 50
 
 // ============== SPI 핀 설정 (Arduino UNO WiFi Rev2) ==============
 #define SPI_SS    8 // Slave Select (표준 SPI SS 핀)
 
 // ============== 엔코더 핀 설정 (UNO 인터럽트 핀 2, 3) ==============
-#define PIN_ENC_1A 2   // 엔코더 1 - A상 (인터럽트 0)
-#define PIN_ENC_1B 4   // 엔코더 1 - B상
-#define PIN_ENC_2A 3   // 엔코더 2 - A상 (인터럽트 1)
-#define PIN_ENC_2B 5   // 엔코더 2 - B상
+#define ENCODER_1A 2   // 엔코더 1 - A상 (인터럽트 0)
+#define ENCODER_1B 4   // 엔코더 1 - B상
+#define ENCODER_2A 3   // 엔코더 2 - A상 (인터럽트 1)
+#define ENCODER_2B 5   // 엔코더 2 - B상
 
 // ============== 명령어 정의 ==============
 #define CMD_FORWARD     'w'
@@ -63,21 +45,18 @@ ModbusTCPServer modbusServer;   // Modbus TCP 서버 (포트 502)
 
 // ============== 전역 변수 ==============
 char currentCommand = CMD_STOP;
-
-// 엔코더 카운트 (volatile - 인터럽트에서 사용)
-volatile long encoderCount[2] = {0, 0};
+volatile long encoderCount[2] = {0, 0}; // 엔코더 카운트
 
 // ============== 함수 선언 ==============
 void sendCommand(char cmd);
 void processSerialCommand();
+void processWiFiCommand();
 void printEncoderValues();
 void resetEncoders();
-void processModbus(); // Modbus 처리 함수 추가
-void sendDataToOPC(); // 외부 OPC 서버 데이터 전송 함수 추가
 
 // ============== 엔코더 인터럽트 핸들러 ==============
 void encoder1ISR() {
-  if (digitalRead(PIN_ENC_1A) == digitalRead(PIN_ENC_1B)) {
+  if (digitalRead(ENCODER_1A) == digitalRead(ENCODER_1B)) {
     encoderCount[0]++;
   } else {
     encoderCount[0]--;
@@ -85,7 +64,7 @@ void encoder1ISR() {
 }
 
 void encoder2ISR() {
-  if (digitalRead(PIN_ENC_2A) == digitalRead(PIN_ENC_2B)) {
+  if (digitalRead(ENCODER_2A) == digitalRead(ENCODER_2B)) {
     encoderCount[1]++;
   } else {
     encoderCount[1]--;
@@ -95,417 +74,198 @@ void encoder2ISR() {
 // ============== Setup ==============
 void setup() {
   Serial.begin(115200);
+  while (!Serial);
   delay(1000);
   
-  Serial.println(F("=== UNO WiFi SPI Master + 2 Encoders ==="));
-  Serial.println(F("Commands:"));
-  Serial.println(F("  w: Forward    s: Backward"));
-  Serial.println(F("  a: Left       d: Right"));
-  Serial.println(F("  x: Stop"));
-  Serial.println(F("  +: Speed Up   -: Speed Down"));
-  Serial.println(F("  l: Line Trace (Simple)"));
-  Serial.println(F("  p: Line Trace (PID)"));
-  Serial.println(F("  e: Print Encoders"));
-  Serial.println(F("  r: Reset Encoders"));
-  Serial.println(F("========================================"));
-  
-  // SPI 초기화
+  // 1. SPI 초기화 (표준 SPI 라이브러리)
   SPI.begin();
-  
-  // SS 핀 설정
   pinMode(SPI_SS, OUTPUT);
   digitalWrite(SPI_SS, HIGH);
   
-  Serial.print(F("[MASTER] SS Pin = "));
-  Serial.println(SPI_SS);
-  Serial.print(F("[MASTER] SS State = "));
-  Serial.println(digitalRead(SPI_SS) ? "HIGH" : "LOW");
+  // 2. 엔코더 설정
+  pinMode(ENCODER_1A, INPUT_PULLUP);
+  pinMode(ENCODER_1B, INPUT_PULLUP);
+  pinMode(ENCODER_2A, INPUT_PULLUP);
+  pinMode(ENCODER_2B, INPUT_PULLUP);
   
-  // SS 핀 5회 토글 테스트 (LED 확인용)
-  Serial.println(F("[TEST] Toggling SS 5 times..."));
-  for (int i = 0; i < 5; i++) {
-    digitalWrite(SPI_SS, LOW);
-    Serial.println(F("  SS -> LOW"));
-    delay(500);
-    digitalWrite(SPI_SS, HIGH);
-    Serial.println(F("  SS -> HIGH"));
-    delay(500);
-  }
-  Serial.println(F("[TEST] SS toggle complete!"));
+  attachInterrupt(digitalPinToInterrupt(ENCODER_1A), encoder1ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_2A), encoder2ISR, CHANGE);
+
+  // 3. WiFi 연결
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
   
-  // 엔코더 핀 설정
-  pinMode(PIN_ENC_1A, INPUT_PULLUP);
-  pinMode(PIN_ENC_1B, INPUT_PULLUP);
-  pinMode(PIN_ENC_2A, INPUT_PULLUP);
-  pinMode(PIN_ENC_2B, INPUT_PULLUP);
-  
-  // 인터럽트 연결 (A상 CHANGE)
-  attachInterrupt(digitalPinToInterrupt(PIN_ENC_1A), encoder1ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENC_2A), encoder2ISR, CHANGE);
-  
-  // WiFi 연결 시도
   if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println(F("[WiFi] WiFi shield not present"));
-  } else {
-    while (status != WL_CONNECTED) {
-      Serial.print(F("[WiFi] Attempting to connect to SSID: "));
-      Serial.println(ssid);
-      status = WiFi.begin(ssid, pass);
-      delay(5000); // 5초 대기
-    }
-    server.begin();
-    
-    // Modbus 서버 시작
-    if (!modbusServer.begin()) {
-      Serial.println(F("[Modbus] Failed to start Modbus TCP Server!"));
-    } else {
-      // 레지스터 구성
-      // Holding Registers: 40001(Speed), 40002(Command)
-      modbusServer.configureHoldingRegisters(0x00, 10); 
-      // Input Registers: 30001-30004(Encoders)
-      modbusServer.configureInputRegisters(0x00, 10);
-      
-      // 초기값 설정
-      modbusServer.holdingRegisterWrite(0, DEFAULT_SPEED); 
-      Serial.println("[Modbus SRV] TCP Server Started on Port 502");
-    }
-
-    // 외부 OPC 서버(Modbus Client) 연결 시도
-    Serial.print("[Modbus CLI] Connecting to OPC Server: ");
-    Serial.print(serverIP);
-    Serial.print(":");
-    Serial.println(serverPort);
-    
-    if (!modbusTCPClient.begin(serverIP, serverPort)) {
-      Serial.println(F("[Modbus CLI] Failed to connect to OPC Server!"));
-    } else {
-      Serial.println(F("[Modbus CLI] Connected to OPC Server!"));
-      detectRegisterOffset(); // 오프셋 자동 감지
-    }
-    
-    Serial.println(F("[WiFi] Connected to Network!"));
-    Serial.print(F("[WiFi] IP Address: "));
-    Serial.println(WiFi.localIP());
+    Serial.println("WiFi module failed!");
+    while (true);
   }
 
-  Serial.println(F("[UNO] SPI Master + Encoders Ready!"));
-  
-  // SPI 실제 전송 테스트 (5회)
-  Serial.println(F("[TEST] Sending 5 SPI test packets ('T')..."));
-  Serial.println(F("[!] Make sure to use ICSP header for SCK(3), MOSI(4), MISO(1)"));
-  delay(1000);  // Slave 준비 대기
-  
-  for (int i = 0; i < 5; i++) {
-    SPI.beginTransaction(SPISettings(100000, MSBFIRST, SPI_MODE0));
-    digitalWrite(SPI_SS, LOW);
-    delayMicroseconds(100);
-    byte response = SPI.transfer('T');  // 테스트 문자 전송
-    delayMicroseconds(100);
-    digitalWrite(SPI_SS, HIGH);
-    SPI.endTransaction();
-    
-    Serial.print(F("  Sent 'T', Response from Slave: 0x"));
-    Serial.println(response, HEX);
-    delay(500);
+  while (status != WL_CONNECTED) {
+    status = WiFi.begin(ssid, pass);
+    delay(1000);
+    Serial.print(".");
   }
-  Serial.println(F("[TEST] SPI test complete! Check Slave serial if it received 'T'."));
+  Serial.println("\nWiFi Connected!");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin(); // TCP 서버 (8888) 시작
+  Serial.println("Server 8888 Started (Use 'w','a','s','d' to control)");
 }
 
 // ============== Main Loop ==============
 void loop() {
-  // 시리얼 명령 처리
-  processSerialCommand();
-  
-  // WiFi 명령 처리
+  // 1. WiFi 명령 수신 및 처리
   processWiFiCommand();
-  
-  // Modbus 명령 처리
-  processModbus();
-  
-  // 주기적 엔코더 값 출력 (100ms)
+
+  // 2. 시리얼 명령 수신 및 처리 (PC 직접 연결 시)
+  processSerialCommand();
+
+  // 3. 엔코더 값 항시 출력 (약 500ms 주기)
   static unsigned long lastPrint = 0;
-  if (millis() - lastPrint >= 100) {
+  if (millis() - lastPrint >= 500) {
     printEncoderValues();
     lastPrint = millis();
   }
-
-  // 하트비트 전송 (500ms 주기)
-  // 메가의 워치독(700ms) 유지를 위해 현재 명령을 다시 보냄
-  static unsigned long lastHeartbeat = 0;
-  if (millis() - lastHeartbeat >= 500) {
-    sendCommand(currentCommand);
-    lastHeartbeat = millis();
-  }
-
-  // 외부 OPC 서버로 데이터 전송 (500ms 주기)
-  static unsigned long lastOPCSend = 0;
-  if (millis() - lastOPCSend >= 500) {
-    sendDataToOPC();
-    lastOPCSend = millis();
-  }
 }
 
-// ============== WiFi TCP 서버 명령 처리 (CMD 환경용) ==============
+// ============== Modbus Client 설정 (서버로 데이터 전송) ==============
+// ============== Modbus Client 설정 (서버로 데이터 전송) ==============
+WiFiClient opcWifiClient;
+ModbusTCPClient modbusTCPClient(opcWifiClient);
+IPAddress serverIP(192, 168, 0, 19); // 서버 IP
+uint16_t serverPort = 49320;         // 서버 포트 (uint16_t로 수정)
+
+// ============== 함수 구현 ==============
+
+// WiFi 명령 처리
 void processWiFiCommand() {
   WiFiClient client = server.available();
   if (client) {
     if (client.connected()) {
-      while (client.available()) {
-        char cmd = client.read();
-        
-        // 수신된 문자가 유효한 명령어인지 확인
-        if (cmd == 'w' || cmd == 's' || cmd == 'a' || cmd == 'd' || cmd == 'x' || 
-            cmd == '+' || cmd == '-' || cmd == 'l' || cmd == 'p') {
-          sendCommand(cmd);
-          client.print("ACK: "); client.println(cmd); // 통신 확인용 응답
-        } else if (cmd == '\r' || cmd == '\n') {
-          // 개행 문자는 무시
-        } else {
-          client.print("ERR: Invalid CMD '"); client.print(cmd); client.println("'");
+      Serial.println("[WiFi] Client Connected");
+      while (client.connected()) {
+        if (client.available()) {
+          char c = client.read();
+          // 유효한 명령이면 Mega로 전송
+          if (c == 'w' || c == 'a' || c == 's' || c == 'd' || c == 'x' || c == 'l' || c == 'p') {
+            sendCommand(c);
+            client.print("ACK: ");
+            client.println(c);
+          }
         }
+        // 엔코더 값 출력 처리 등을 위해 루프 탈출
+        if (millis() % 100 == 0) break; 
       }
     }
   }
 }
 
-// ============== Modbus TCP 서버 처리 ==============
-void processModbus() {
-  modbusServer.poll();
-
-  // 1. 엔코더 값 입력 레지스터 업데이트 (30001~30004)
-  long encL = getEncoderCount(0);
-  long encR = getEncoderCount(1);
-  
-  modbusServer.inputRegisterWrite(0, (encL >> 16) & 0xFFFF); // High 16-bit
-  modbusServer.inputRegisterWrite(1, encL & 0xFFFF);        // Low 16-bit
-  modbusServer.inputRegisterWrite(2, (encR >> 16) & 0xFFFF);
-  modbusServer.inputRegisterWrite(3, encR & 0xFFFF);
-
-  // 2. 명령 제어 (40002번 레지스터 감시)
-  static uint16_t lastModbusCmd = 0;
-  uint16_t currentModbusCmd = modbusServer.holdingRegisterRead(1);
-  
-  if (currentModbusCmd != lastModbusCmd) {
-    switch (currentModbusCmd) {
-      case 0: sendCommand(CMD_STOP); break;
-      case 1: sendCommand(CMD_FORWARD); break;
-      case 2: sendCommand(CMD_BACKWARD); break;
-      case 3: sendCommand(CMD_LEFT); break;
-      case 4: sendCommand(CMD_RIGHT); break;
-      case 5: sendCommand(CMD_LINE_TRACE); break;
-      case 6: sendCommand(CMD_LINE_PID); break;
+// 시리얼 명령 처리
+void processSerialCommand() {
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == 'w' || c == 'a' || c == 's' || c == 'd' || c == 'x' || c == 'l' || c == 'p') {
+      sendCommand(c);
     }
-    lastModbusCmd = currentModbusCmd;
-    Serial.print(F("[Modbus] New Command: "));
-    Serial.println(currentModbusCmd);
-  }
-
-  // 3. 속도 제어 (40001번 레지스터 감시)
-  static uint16_t lastModbusSpeed = 0;
-  uint16_t currentModbusSpeed = modbusServer.holdingRegisterRead(0);
-  if (currentModbusSpeed != lastModbusSpeed) {
-    lastModbusSpeed = currentModbusSpeed;
-    // 참고: 여기서 Mega로 PWM 값을 직접 보내는 SPI 프로토콜을 추가하면 더 정확한 제어가 가능합니다.
   }
 }
 
-// ============== SPI 명령 전송 ==============
+// SPI 명령 전송 (Mega와 호환)
 void sendCommand(char cmd) {
   SPI.beginTransaction(SPISettings(50000, MSBFIRST, SPI_MODE0));
   
   digitalWrite(SPI_SS, LOW);
   delayMicroseconds(100);
   
-  // 3바이트 패킷 전송: [HEADER('<')] [CMD] [FOOTER('>')]
-  SPI.transfer('<');
+  SPI.transfer('<');        // Header
   delayMicroseconds(50);
-  char response = (char)SPI.transfer(cmd);
+  SPI.transfer(cmd);        // Command
   delayMicroseconds(50);
-  SPI.transfer('>');
+  SPI.transfer('>');        // Footer
   
   delayMicroseconds(100); 
   digitalWrite(SPI_SS, HIGH);
   SPI.endTransaction();
   
   currentCommand = cmd;
-  
-  Serial.print(F("[UNO] Sent: <"));
-  Serial.print(cmd);
-  Serial.print(F("> | ACK: '"));
-  Serial.print(response);
-  Serial.println(F("'"));
+  Serial.print("[Sent] ");
+  Serial.println(cmd);
 }
 
-// ============== 엔코더 값 출력 ==============
+// 엔코더 값 출력 (값이 변했을 때만 출력)
 void printEncoderValues() {
-  Serial.print(F("ENC[L]:"));
-  Serial.print(encoderCount[0]);
-  Serial.print(F("  [R]:"));
-  Serial.println(encoderCount[1]);
+  noInterrupts();
+  long e1 = encoderCount[0];
+  long e2 = encoderCount[1];
+  interrupts();
+  
+  static long lastE1 = -99999;
+  static long lastE2 = -99999;
+  
+  // 값이 변하지 않았으면 리턴 (출력 안함)
+  if (e1 == lastE1 && e2 == lastE2) {
+    return;
+  }
+  
+  // 값이 변했으면 갱신하고 출력
+  lastE1 = e1;
+  lastE2 = e2;
+  
+  Serial.print("ENC_L: ");
+  Serial.print(e1);
+  Serial.print("\t ENC_R: ");
+  Serial.println(e2);
+  
+  // OPC 서버로도 전송 시도
+  sendDataToOPC();
 }
 
-// ============== 엔코더 리셋 ==============
-void resetEncoders() {
+void resetEncoders() { 
   noInterrupts();
   encoderCount[0] = 0;
   encoderCount[1] = 0;
   interrupts();
-  Serial.println(F("[UNO] Encoders Reset!"));
+  Serial.println("Encoders Reset");
 }
 
-// ============== 개별 엔코더 값 읽기 ==============
-long getEncoderCount(int index) {
-  if (index < 0 || index >= 2) return 0;
-  noInterrupts();
-  long val = encoderCount[index];
-  interrupts();
-  return val;
-}
-
-// ============== 시리얼 명령 처리 ==============
-void processSerialCommand() {
-  if (Serial.available() > 0) {
-    char cmd = Serial.read();
-    
-    switch (cmd) {
-      case 'w': case 'W':
-        sendCommand(CMD_FORWARD);
-        Serial.println(F(">> Forward"));
-        break;
-        
-      case 's': case 'S':
-        sendCommand(CMD_BACKWARD);
-        Serial.println(F(">> Backward"));
-        break;
-        
-      case 'a': case 'A':
-        sendCommand(CMD_LEFT);
-        Serial.println(F(">> Turn Left"));
-        break;
-        
-      case 'd': case 'D':
-        sendCommand(CMD_RIGHT);
-        Serial.println(F(">> Turn Right"));
-        break;
-        
-      case 'x': case 'X':
-        sendCommand(CMD_STOP);
-        Serial.println(F(">> Stop"));
-        break;
-        
-      case '+': case '=':
-        sendCommand(CMD_SPEED_UP);
-        Serial.println(F(">> Speed Up"));
-        break;
-        
-      case '-': case '_':
-        sendCommand(CMD_SPEED_DOWN);
-        Serial.println(F(">> Speed Down"));
-        break;
-        
-      case 'l': case 'L':
-        sendCommand(CMD_LINE_TRACE);
-        Serial.println(F(">> Line Trace (Simple)"));
-        break;
-        
-      case 'p': case 'P':
-        sendCommand(CMD_LINE_PID);
-        Serial.println(F(">> Line Trace (PID)"));
-        break;
-        
-      case 'e': case 'E':
-        Serial.println(F("\n=== Encoder Values ==="));
-        Serial.print(F("Encoder 1 (Left):  "));
-        Serial.println(encoderCount[0]);
-        Serial.print(F("Encoder 2 (Right): "));
-        Serial.println(encoderCount[1]);
-        Serial.println(F("======================\n"));
-        break;
-        
-      case 'r': case 'R':
-        resetEncoders();
-        break;
-        
-      case '?':
-        Serial.println(F("\n=== Commands ==="));
-        Serial.println(F("w/s: Forward/Backward"));
-        Serial.println(F("a/d: Left/Right"));
-        Serial.println(F("x: Stop"));
-        Serial.println(F("+/-: Speed Up/Down"));
-        Serial.println(F("l/p: LineTrace/PID"));
-        Serial.println(F("e: Print Encoders"));
-        Serial.println(F("r: Reset Encoders"));
-        Serial.println(F("================\n"));
-        break;
-        
-      default:
-        break;
-    }
-  }
-}
-
-// ============== 자동 주행 예시 ==============
-void autoRun() {
-  sendCommand(CMD_FORWARD);
-  delay(2000);
-  
-  sendCommand(CMD_LEFT);
-  delay(500);
-  
-  sendCommand(CMD_FORWARD);
-  delay(2000);
-  
-  sendCommand(CMD_RIGHT);
-  delay(500);
-  
-  sendCommand(CMD_STOP);
-  delay(1000);
-}
-
-// ============== 연속 라인트레이싱 ==============
-void continuousLineTrace() {
-  while (true) {
-    sendCommand(CMD_LINE_PID);
-    delay(50);
-    
-    if (Serial.available() > 0) {
-      char c = Serial.read();
-      if (c == 'x' || c == 'X') {
-        sendCommand(CMD_STOP);
-        break;
-      }
-    }
-  }
-}
-
-// ============== 외부 OPC 서버(Modbus Client) 데이터 전송 ==============
+// 외부 OPC 서버로 데이터 전송
 void sendDataToOPC() {
-  // 연결 확인 및 재연결
   if (!modbusTCPClient.connected()) {
-    Serial.println(F("[Modbus CLI] Connection lost. Reconnecting..."));
-    modbusTCPClient.stop();
-    if (modbusTCPClient.begin(serverIP, serverPort)) {
-      Serial.println(F("[Modbus CLI] Reconnected!"));
-      detectRegisterOffset();
-    } else {
-      Serial.println(F("[Modbus CLI] Reconnection failed!"));
-      return;
+    // 연결 시도 (블로킹 방지를 위해 매번 시도하지 않도록 할 수도 있음)
+    static unsigned long lastConnectAttempt = 0;
+    if (millis() - lastConnectAttempt > 5000) {
+      Serial.print("[Modbus CLI] Connecting to ");
+      Serial.print(serverIP);
+      Serial.print(":");
+      Serial.println(serverPort);
+      
+      if (!modbusTCPClient.begin(serverIP, serverPort)) {
+        Serial.println("[Modbus CLI] Connect Failed!");
+      } else {
+        Serial.println("[Modbus CLI] Connected!");
+      }
+      lastConnectAttempt = millis();
     }
+    return;
   }
 
-  // 데이터 수집
-  long encL = getEncoderCount(0);
-  long encR = getEncoderCount(1);
-  
-  // OPC 서버로 전송
-  // 1. 엔코더 L (40003, 40004)
-  writeFloatToRegisters(REG_ENC_L_LOW, (float)encL);
-  
-  // 2. 엔코더 R (40005, 40006)
-  writeFloatToRegisters(REG_ENC_R_LOW, (float)encR);
-  
-  // 3. 현재 상태 (40008)
-  writeRegisterVerify(reg(REG_STATUS), (uint16_t)currentCommand);
-  
-  Serial.println(F("[Modbus CLI] Data sent to OPC Server"));
+  // 데이터 전송
+  noInterrupts();
+  long e1 = encoderCount[0];
+  long e2 = encoderCount[1];
+  interrupts();
+
+  // 레지스터 0번(40001)에 L, 1번(40002)에 R 값을 씀
+  if (!modbusTCPClient.holdingRegisterWrite(0, (int)e1)) {
+    Serial.print("[Modbus] Write Fail (L) Error: ");
+    Serial.println(modbusTCPClient.lastError());
+  }
+  if (!modbusTCPClient.holdingRegisterWrite(1, (int)e2)) {
+    Serial.print("[Modbus] Write Fail (R) Error: ");
+    Serial.println(modbusTCPClient.lastError());
+  } else {
+    // 성공 시 점(.) 출력해서 동작 확인
+    Serial.print("."); 
+  }
 }
