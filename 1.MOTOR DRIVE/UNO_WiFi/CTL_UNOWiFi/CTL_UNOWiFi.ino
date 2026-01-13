@@ -45,10 +45,10 @@ ModbusTCPServer modbusServer;   // Modbus TCP 서버 (포트 502)
 #define SPI_SS    8 // Slave Select (표준 SPI SS 핀)
 
 // ============== 엔코더 핀 설정 (UNO 인터럽트 핀 2, 3) ==============
-#define ENCODER_1A 2   // 엔코더 1 - A상 (인터럽트 0)
-#define ENCODER_1B 4   // 엔코더 1 - B상
-#define ENCODER_2A 3   // 엔코더 2 - A상 (인터럽트 1)
-#define ENCODER_2B 5   // 엔코더 2 - B상
+#define PIN_ENC_1A 2   // 엔코더 1 - A상 (인터럽트 0)
+#define PIN_ENC_1B 4   // 엔코더 1 - B상
+#define PIN_ENC_2A 3   // 엔코더 2 - A상 (인터럽트 1)
+#define PIN_ENC_2B 5   // 엔코더 2 - B상
 
 // ============== 명령어 정의 ==============
 #define CMD_FORWARD     'w'
@@ -77,7 +77,7 @@ void sendDataToOPC(); // 외부 OPC 서버 데이터 전송 함수 추가
 
 // ============== 엔코더 인터럽트 핸들러 ==============
 void encoder1ISR() {
-  if (digitalRead(ENCODER_1A) == digitalRead(ENCODER_1B)) {
+  if (digitalRead(PIN_ENC_1A) == digitalRead(PIN_ENC_1B)) {
     encoderCount[0]++;
   } else {
     encoderCount[0]--;
@@ -85,7 +85,7 @@ void encoder1ISR() {
 }
 
 void encoder2ISR() {
-  if (digitalRead(ENCODER_2A) == digitalRead(ENCODER_2B)) {
+  if (digitalRead(PIN_ENC_2A) == digitalRead(PIN_ENC_2B)) {
     encoderCount[1]++;
   } else {
     encoderCount[1]--;
@@ -134,14 +134,14 @@ void setup() {
   Serial.println(F("[TEST] SS toggle complete!"));
   
   // 엔코더 핀 설정
-  pinMode(ENCODER_1A, INPUT_PULLUP);
-  pinMode(ENCODER_1B, INPUT_PULLUP);
-  pinMode(ENCODER_2A, INPUT_PULLUP);
-  pinMode(ENCODER_2B, INPUT_PULLUP);
+  pinMode(PIN_ENC_1A, INPUT_PULLUP);
+  pinMode(PIN_ENC_1B, INPUT_PULLUP);
+  pinMode(PIN_ENC_2A, INPUT_PULLUP);
+  pinMode(PIN_ENC_2B, INPUT_PULLUP);
   
   // 인터럽트 연결 (A상 CHANGE)
-  attachInterrupt(digitalPinToInterrupt(ENCODER_1A), encoder1ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_2A), encoder2ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENC_1A), encoder1ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENC_2A), encoder2ISR, CHANGE);
   
   // WiFi 연결 시도
   if (WiFi.status() == WL_NO_MODULE) {
