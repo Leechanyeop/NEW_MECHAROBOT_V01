@@ -25,6 +25,7 @@ void setup() {
   qtr.setTypeRC();
   qtr.setSensorPins(sensorPins, SensorCount);
   qtr.setEmitterPin(255); // 이미터 항상 켜짐 (또는 제어 핀 없음)
+//즉, 아두이노가 소프트웨어적으로 LED를 껐다 켰다 할 수 있는 핀이 지정되지 않았음을 선언하는 것입니다.
 
   Serial.println("\n=== QTR-8RC Sensor Test ===");
   Serial.println("Initial Calibration (5 seconds)...");
@@ -64,7 +65,12 @@ void loop() {
   // 센서 개별 값 출력 (0 ~ 1000, 1000이 검은색)
   Serial.print("Val: ");
   for (uint8_t i = 0; i < SensorCount; i++) {
-    Serial.print(sensorValues[i]);
+    // 최대값(1000)일 때 1, 그 외에는 0으로 출력
+    if (sensorValues[i] == 1000) {
+      Serial.print("1");
+    } else {
+      Serial.print("0");
+    }
     Serial.print("\t");
   }
   

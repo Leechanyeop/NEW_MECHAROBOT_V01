@@ -1,0 +1,83 @@
+좋습니다 🙂 이제 ESP32가 클라이언트로 외부 OPC UA 서버에 데이터를 푸시하면서 동시에 서버의 노드를 구독하는 구조를 설명해 드릴게요.
+
+🔹 구조 개념
+┌───────────────┐        Wi-Fi        ┌───────────────────┐
+│   ESP32       │  <----------------> │   OPC UA Server   │
+│               │                     │ (PC/Cloud/SCADA)  │
+│  - 센서 읽기   │   데이터 푸시       │   - 데이터 저장     │
+│  - 데이터 푸시 │ ------------------> │   - 제어 명령 발행  │
+│  - 노드 구독   │ <------------------ │   - 노드 값 변경    │
+└───────────────┘                     └───────────────────┘
+
+
+- 푸시(Push): ESP32가 클라이언트로서 서버의 특정 노드에 주기적으로 센서 데이터를 기록
+- 구독(Subscription): ESP32가 서버의 제어 노드를 구독 → 서버가 값을 변경하면 ESP32가 알림을 받아 동작
+
+🔹 동작 흐름
+- ESP32가 온도 센서를 읽음 → 서버의 Temperature 노드에 값 기록 (푸시)
+- 서버는 Fan_Control 노드를 가지고 있음
+- ESP32는 Fan_Control 노드를 구독 → 값이 변경되면 콜백 실행
+- 서버가 Fan_Control = true로 변경 → ESP32가 알림을 받고 팬을 켬
+
+🔹 코드 예제 (개략, open62541 기반)
+#include "open62541.h"
+#include "driver/gpio.h"
+
+#define FAN_PIN 2
+
+static UA_Boolean running = true;
+
+// 서버 노드 변경 시 호출되는 콜백
+static void subscriptionCallback(UA_Client *client, UA_UInt32 subId,
+                                 void *subContext, UA_UInt32 monId,
+                                 void *monContext, UA_DataValue *value) {
+    if(UA_Variant_hasScalarType(&value->value, &UA_TYPES[UA_TYPES_BOOLEAN])) {
+        UA_Boolean fanState = *(UA_Boolean*)value->value.data;
+        gpio_set_level(FAN_PIN, fanState);
+    }
+}
+
+void app_main(void) {
+    gpio_set_direction(FAN_PIN, GPIO_MODE_OUTPUT);
+
+    // OPC UA 클라이언트 생성
+    UA_Client *client = UA_Client_new();
+    UA_ClientConfig_setDefault(UA_Client_getConfig(client));
+
+    // 서버 연결
+    UA_StatusCode retval = UA_Client_connect(client, "opc.tcp://192.168.0.10:4840");
+    if(retval != UA_STATUSCODE_GOOD) return;
+
+    // Subscription 생성
+    UA_CreateSubscriptionRequest request = UA_CreateSubscriptionRequest_default();
+    UA_CreateSubscriptionResponse response = UA_Client_Subscriptions_create(client, request, NULL, NULL, NULL);
+
+    // Fan_Control 노드 구독
+    UA_NodeId fanNodeId = UA_NODEID_STRING(2, "Fan_Control");
+    UA_MonitoredItemCreateRequest monRequest =
+        UA_MonitoredItemCreateRequest_default(fanNodeId);
+    UA_Client_MonitoredItems_createDataChange(client, response.subscriptionId,
+                                              UA_TIMESTAMPSTORETURN_BOTH,
+                                              monRequest, NULL, subscriptionCallback, NULL);
+
+    // 주기적으로 센서 데이터 푸시
+    while(running) {
+        double temperature = 25.0; // 실제 센서 값 읽기
+        UA_Variant value;
+        UA_Variant_setScalar(&value, &temperature, &UA_TYPES[UA_TYPES_DOUBLE]);
+        UA_NodeId tempNodeId = UA_NODEID_STRING(2, "Temperature");
+        UA_Client_writeValueAttribute(client, tempNodeId, &value);
+
+        vTaskDelay(5000 / portTICK_PERIOD_MS); // 5초마다 업데이트
+    }
+
+    UA_Client_disconnect(client);
+    UA_Client_delete(client);
+}
+
+
+
+🔹 요약
+- ESP32 → 서버: 센서 데이터를 주기적으로 푸시 (클라이언트 → 서버 노드 쓰기)
+- 서버 → ESP32: ESP32가 서버 노드를 구독 → 값 변경 시 알림 받아 동작 수행
+- 결과: ESP32는 데이터를 보내면서 동시에 서버의 제어 명령을 실시간으로 수행할 수 있음

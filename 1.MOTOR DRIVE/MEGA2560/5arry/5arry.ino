@@ -65,68 +65,58 @@ void setup() {
 
 // ============== 메인 루프 (Loop) ==============
 void loop() {
-  // 1. 센서 읽기 및 캘리브레이션 적용 (고정값: Min 550, Max 2500)
-  uint16_t sensorValues[SensorCount];
-  uint32_t avg = 0;
-  uint32_t sum = 0;
+  // 1. 디지털 센서 읽기 (Pins 28-32)
+  int s[5];
+  int activeCount = 0;
+  long weightSum = 0;
   bool isLineFound = false;
-  bool isAllBlack = true;
 
   for (uint8_t i = 0; i < SensorCount; i++) {
-    // 8채널과 동일한 핀(28-32) 사용 시 analogRead 가능한 핀인지 확인 필요
-    // Mega 2560에서 28번 등은 디지털 핀입니다. 
-    // 만약 아날로그 값을 쓰시려면 A0~A15 핀을 쓰셔야 합니다.
-    // 여기서는 일단 기존 핀 28~32에서 analogRead를 시도하지만, 
-    // 하드웨어 연결에 따라 digitalRead(0 or 1000으로 처리)가 될 수 있습니다.
-    uint16_t rawValue = analogRead(sensorPins[i]); 
+    // 센서가 검은 선을 감지했을 때 HIGH(1)인지 LOW(0)인지 확인 필요
+    // 일반적인 TCRT5000 모듈은 검은색일 때 LOW(0)인 경우가 많습니다.
+    // 여기서는 검은선 감지 시 HIGH(1)인 경우로 작성합니다. 
+    // 반대로 작동한다면 digitalRead 앞에 ! 를 붙이세요.
+    s[i] = digitalRead(sensorPins[i]);
     
-    // 고정된 캘리브레이션 적용 (Min: 550, Max: 2500)
-    if (rawValue <= 550) rawValue = 0;
-    else if (rawValue >= 2500) rawValue = 1000;
-    else rawValue = map(rawValue, 550, 2500, 0, 1000);
-    
-    sensorValues[i] = rawValue;
-
-    // 라인 감지 여부 (하나라도 200 이상이면 라인 있음)
-    if (rawValue > 200) isLineFound = true;
-    // 전체 검은색 여부 (하나라도 700 미만이면 false)
-    if (rawValue < 700) isAllBlack = false;
-
-    // 가중치 평균 계산 (0~4000 범위의 Position 생성)
-    avg += (uint32_t)rawValue * (i * 1000);
-    sum += (uint32_t)rawValue;
+    if (s[i] == HIGH) { // 검은 선 감지
+      // 가중치 부여: -2000, -1000, 0, 1000, 2000
+      weightSum += (int16_t(i) - 2) * 1000;
+      activeCount++;
+      isLineFound = true;
+    }
   }
 
-  // 2. 특수 상황 처리 (정지)
+  // 2. 특수 상황 처리
   if (!isLineFound) {
+    // 라인을 완전히 놓쳤을 때: 정지 (또는 마지막 에러 방향으로 회전 시도 가능)
     motor.stop();
     return;
   }
   
-  if (isAllBlack) {
+  if (activeCount == SensorCount) {
+    // 모든 센서가 검은색 (정지선 감지)
     motor.stop();
-    Serial.println(F("!!! 정지선 감지 !!!"));
-    delay(500);
+    Serial.println(F("!!! 정지선 감지 - 정지 !!!"));
+    delay(1000);
     return;
   }
 
-  // 3. 위치 및 에러 계산
-  uint16_t position = avg / sum; // 0 ~ 4000 (중앙 2000)
-  int16_t error = 2000 - (int16_t)position;
+  // 3. 에러 계산 (가중치 평균)
+  int16_t error = weightSum / activeCount;
 
-  // 3. PID 제어 계산
+  // 4. PID 제어 계산
   integral += error;
-  integral = constrain(integral, -1000, 1000);
+  integral = constrain(integral, -1000, 1000); // 적분값 제한
   int16_t derivative = error - lastError;
   
-  int16_t correction = (int16_t)(Kp * (error / 100.0) + Ki * integral + Kd * (derivative / 100.0));
+  // 디지털 센서는 반응이 계단식이므로 Kp 값을 아날로그보다 높여야 할 수 있습니다.
+  int16_t correction = (int16_t)(Kp * (error / 1000.0) + Ki * (integral / 1000.0) + Kd * (derivative / 1000.0));
   lastError = error;
 
-  // 4. 가변 속도 (심한 커브 시 감속)
+  // 5. 가변 속도 및 모터 제어
   int currentBaseSpeed = baseSpeed;
-  if (abs(error) > 1500) currentBaseSpeed = baseSpeed * 0.6;
+  if (abs(error) > 1000) currentBaseSpeed = baseSpeed * 0.7; // 급커브 감속
 
-  // 5. 모터 속도 설정
   int leftSpeed = currentBaseSpeed + correction;
   int rightSpeed = currentBaseSpeed - correction;
 
@@ -145,4 +135,5 @@ void loop() {
     Serial.print(" R: "); Serial.println(rightSpeed);
     lastPrint = millis();
   }
-}
+  }
+

@@ -3,14 +3,13 @@ README (한국어) - NEWMECHA_ROBOT_0.1V
 시스템 모듈
 - MOTOR DRIVE – 로봇 주행 및 이동
 - SENSOR_recog – 센서 인식
-- motion_track – 장애물 감지 시 동작 제어
-- CRC_tel – 서버와 로봇 간 통신 노드
+- motion_track – 장애물 감지 시 동작 제어 //추후 계발예정
+- ServeConnection – 서버와 로봇 간 통신 노드
 - vision_CAM – 비전 카메라를 통한 사물 인식
-- QR_visible – QR 코드 인식 및 좌표 계산
 
 통신 흐름
 서버 → ESP32
-- 목적지 경로 설정
+- 목적지 경로 설정 opcua
 예시:
 - A에서 B로 이동
 - A에서 B로 이동하면서 중간에 C를 들름
