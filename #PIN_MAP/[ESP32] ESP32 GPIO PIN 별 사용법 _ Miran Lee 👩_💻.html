@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<!-- saved from url=(0064)https://mmirann.github.io/iot/arduino/2021/02/08/ESP32_GPIO.html -->
+<html class="no-js"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <title>
+    [ESP32] ESP32 GPIO PIN 별 사용법 | Miran Lee 👩‍💻
+  </title>
+  <meta name="description" content="ESP 모듈은 블루투스, 와이파이를 기본적으로 사용할 수 있으며 36개의 GPIO가 사용 가능하다. 또한 별도로 보드 라이브러리를 설치하기만 하면 아두이노 IDE로 업로드가 가능하다.NodeMCU 보드는 이 ESP32 칩/모듈을 간단하게 사용할 수 있는 개발 보드이다.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/main.css">
+
+  <!--Favicon-->
+  <link rel="shortcut icon" href="https://mmirann.github.io/assets/favicon.ico" type="image/x-icon">
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://mmirann.github.io/iot/arduino/2021/02/08/ESP32_GPIO.html">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/atom+xml" title="Miran Lee 👩‍💻" href="https://mmirann.github.io/feed.xml">
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/all.css" integrity="sha384-oS3vJWv+0UjzBfQzYUhtDYW+Pj2yciDJxpsK1OYPAYjqT085Qq/1cq5FLXAZQ7Ay" crossorigin="anonymous">
+  
+  <link rel="stylesheet" type="text/css" href="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/pretendardvariable.css">
+
+
+  <!-- Google Fonts -->
+  
+  <link href="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/css" rel="stylesheet" type="text/css">
+   
+
+  <!-- KaTeX -->
+  
+  <link rel="stylesheet" href="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/katex.min.css" integrity="sha384-yFRtMMDnQtDRO8rLpMIKrtPCD5jdktao2TV19YiZYWMDkUR5GQZR/NOVTdquEx1j" crossorigin="anonymous">
+
+  <script type="text/javascript" async="" src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/js"></script><script async="" src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/analytics.js.다운로드"></script><script src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/katex.min.js.다운로드" integrity="sha384-9Nhn55MVVN0/4OFx7EE5kpFBPsEMZxKTCnA+4fqDmg12eCTqGi6+BB2LjY8brQxJ" crossorigin="anonymous"></script>
+  
+
+  <!-- Google Analytics -->
+  
+  <script>
+    (function (i, s, o, g, r, a, m) {
+      i["GoogleAnalyticsObject"] = r;
+      (i[r] =
+        i[r] ||
+        function () {
+          (i[r].q = i[r].q || []).push(arguments);
+        }),
+        (i[r].l = 1 * new Date());
+      (a = s.createElement(o)), (m = s.getElementsByTagName(o)[0]);
+      a.async = 1;
+      a.src = g;
+      m.parentNode.insertBefore(a, m);
+    })(
+      window,
+      document,
+      "script",
+      "//www.google-analytics.com/analytics.js",
+      "ga"
+    );
+
+    ga("create", "UA-164581379-1", "auto");
+    ga("send", "pageview");
+  </script>
+  
+<script type="text/javascript" async="" src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/embed.js.다운로드"></script><script src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/alfie_v4.63f1ab6d6b9d5807dc0c94ef3fe0b851.js.다운로드" async="" charset="UTF-8"></script><script src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/did-0049.min.js.다운로드" async="" charset="UTF-8"></script></head>
+
+  <body>
+    <header class="site-header">
+  <!-- <div class="brandi -->
+  <nav class="site-nav">
+    <ul>
+      <li class="left-nav">
+        
+        <a href="https://mmirann.github.io/">
+          <img class="avatar" src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/avatar.png" alt="">
+        </a>
+        
+        <h1 class="site-title">
+          <a href="https://mmirann.github.io/">Miran Lee 👩‍💻</a>
+        </h1>
+      </li>
+      <li class="right-nav">
+                                                   
+        <a class="page-link" href="https://mmirann.github.io/tags.html">
+          Tags
+        </a>
+      </li>
+                                   
+      <!-- Search bar -->
+      <li class="right-nav social-icon">
+        <!-- Social icons from Font Awesome, if enabled  -->
+        <ul class="social">
+
+
+
+<li>
+	<a href="mailto:miran7803@gmail.com" title="Email">
+		<i class="fas fa-fw fa-envelope"></i>
+	</a>
+</li>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<li>
+	<a href="https://github.com/mmirann" title="Follow on GitHub">
+		<i class="fab fa-fw fa-github"></i>
+	</a>
+</li>
+
+
+
+
+
+<li>
+	<a href="http://instagram.com/nvmrn" title="Follow on Instagram">
+		<i class="fab fa-fw fa-instagram"></i>
+	</a>
+</li>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</ul>
+      </li>
+      
+      <li class="right-nav">
+        <form action="https://mmirann.github.io/search.html" method="get">
+          <input type="text" id="search-box" name="query" class="">
+          <button type="submit" class="">
+            <i class="fa fa-fw fa-search"></i>
+          </button>
+        </form>
+      </li>
+      
+    </ul>
+  </nav>
+  <!-- </div> -->
+
+  <div class="site-category">
+    <ul>
+      <li><a href="https://mmirann.github.io/About">About</a></li>
+      <li>
+        <a>Project</a>
+        <ul>
+          <li><a href="https://mmirann.github.io/Project/Purdue">Purdue</a></li>
+          <li><a href="https://mmirann.github.io/Project/Entry">엔트리 HW</a></li>
+        </ul>
+      </li>
+      <li>
+        <a>Study</a>
+        <ul>
+          <li><a href="https://mmirann.github.io/Study/DataCommu">데이터통신</a></li>
+          <li><a href="https://mmirann.github.io/Study/OS">운영체제</a></li>
+          <li><a href="https://mmirann.github.io/Study/Nodejs">Nodejs</a></li>
+        </ul>
+      </li>
+
+      <li>
+        <a>Algorithm</a>
+        <ul>
+          <li><a href="https://mmirann.github.io/Algorithm/Concept">Concept</a></li>
+          <li><a href="https://mmirann.github.io/Algorithm/Solving">Solving</a></li>
+        </ul>
+      </li>
+
+      <li>
+        <a>IoT</a>
+        <ul>
+          <li><a href="https://mmirann.github.io/IoT/Arduino">Arduino</a></li>
+          <li><a href="https://mmirann.github.io/IoT/LoRa">LoRa</a></li>
+          <li><a href="https://mmirann.github.io/IoT/AgIoT">AgIoT</a></li>
+        </ul>
+      </li>
+
+      <li>
+        <a>Review</a>
+        <ul>
+          <li><a href="https://mmirann.github.io/Review/Device">Device</a></li>
+          <li><a href="https://mmirann.github.io/Review/Book">Book</a></li>
+        </ul>
+      </li>
+
+      <li>
+        <a>Etc.</a>
+        <ul>
+          <li><a href="https://mmirann.github.io/Etc/Github%20Blog">Github Blog</a></li>
+          <li><a href="https://mmirann.github.io/Etc/Crawler">Crawler</a></li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+</header>
+
+    <div class="content">
+      <article>
+  <header style="background-image: url(&#39;/&#39;)">
+    <h1 class="title">[ESP32] ESP32 GPIO PIN 별 사용법</h1>
+    
+    <h3 class="subtitle"></h3>
+    
+    <p class="meta">
+      February 8, 2021 
+    </p>
+  </header>
+  <section class="post-content"><p>ESP 모듈은 블루투스, 와이파이를 기본적으로 사용할 수 있으며 36개의 GPIO가 사용 가능하다. 또한 별도로 보드 라이브러리를 설치하기만 하면 아두이노 IDE로 업로드가 가능하다.
+NodeMCU 보드는 이 ESP32 칩/모듈을 간단하게 사용할 수 있는 개발 보드이다.</p>
+
+<h2 id="esp32-peripheral">ESP32 Peripheral</h2>
+
+<ul>
+  <li>18 ADC(Analog-to-Digital Converter) channel</li>
+  <li>3 SPI</li>
+  <li>3 UART</li>
+  <li>2 I2C</li>
+  <li>16 PWM</li>
+  <li>2 DAC (Digital-to-Analog Converter)</li>
+  <li>2 I2S</li>
+  <li>10 Capacitive sensing GPIO</li>
+</ul>
+
+<p>ADC와 DAC는 특정 핀에서만 사용할 수 있지만 나머지들은 코드에서 설정한대로 사용이 가능하다. 이와 같이 핀을 따로 코드에서 설정해서 사용할 수 있지만, 기본적으로 고정되어 있는 기능도 있다. 아래 핀 맵에 나타나있다.</p>
+
+<h2 id="esp32-pin-map">ESP32 PIN MAP</h2>
+
+<p><a href="https://mmirann.github.io/iot/arduino/2021/02/08/url">
+<img src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/107169498-59db7c00-6a01-11eb-9c22-b4ceec1aee5a.jpg" alt="9079562_15791585746695">
+</a></p>
+
+<h2 id="esp32-핀별-기능">ESP32 핀별 기능</h2>
+
+<h4 id="input-only-pins">INPUT Only Pins</h4>
+
+<p>입력 전용 핀, 내부 풀업/풀다운 없음, 출력으로 사용불가</p>
+
+<ul>
+  <li>GPIO 34</li>
+  <li>GPIO 35</li>
+  <li>GPIO 36</li>
+  <li>GPIO 37</li>
+  <li>GPIO 38</li>
+  <li>GPIO 39</li>
+</ul>
+
+<h4 id="spi-flash-intergrated-on-the-esp-wroom-32">SPI flash intergrated on the ESP-WROOM-32</h4>
+
+<p>일부 보드들은 GPIO 6-11 핀도 사용 가능하지만 ESP-WROOM-32 칩에 내장된 SPI Flash와 연결되어있기 때문에 해당 칩을 사용하는 경우 다른 용도 사용을 권장하지 않음</p>
+
+<ul>
+  <li>GPIO 6 (SCK/CLK)</li>
+  <li>GPIO 7 (SDO/SD0)</li>
+  <li>GPIO 8 (SDI/SD1)</li>
+  <li>GPIO 9 (SHD/SD2)</li>
+  <li>GPIO 10 (SWP/SD3)</li>
+  <li>GPIO 11 (CSC/CMD)</li>
+</ul>
+
+<h4 id="capacitive-touch-gpio">Capacitive Touch GPIO</h4>
+
+<p>ESP32는 정전식 터치 입력이 가능, 10개의 터치 입력 센서 이용 가능</p>
+
+<ul>
+  <li>T0 (GPIO 4)</li>
+  <li>T1 (GPIO 0)</li>
+  <li>T2 (GPIO 2)</li>
+  <li>T3 (GPIO 15)</li>
+  <li>T4 (GPIO 13)</li>
+  <li>T5 (GPIO 12)</li>
+  <li>T6 (GPIO 14)</li>
+  <li>T7 (GPIO 27)</li>
+  <li>T8 (GPIO 33)</li>
+  <li>T9 (GPIO 32)</li>
+</ul>
+
+<h4 id="adc-analog-to-digital-converter">ADC (Analog-to-DIgital Converter)</h4>
+
+<p>18개의 12-bit(0-4095(3.3V)) ADC 채널</p>
+
+<ul>
+  <li>ADC1_CH0 (GPIO 36)</li>
+  <li>ADC1_CH1 (GPIO 37)</li>
+  <li>ADC1_CH2 (GPIO 38)</li>
+  <li>ADC1_CH3 (GPIO 39)</li>
+  <li>ADC1_CH4 (GPIO 32)</li>
+  <li>ADC1_CH5 (GPIO 33)</li>
+  <li>ADC1_CH6 (GPIO 34)</li>
+  <li>ADC1_CH7 (GPIO 35)</li>
+  <li>ADC2_CH0 (GPIO 4)</li>
+  <li>ADC2_CH1 (GPIO 0)</li>
+  <li>ADC2_CH2 (GPIO 2)</li>
+  <li>ADC2_CH3 (GPIO 15)</li>
+  <li>ADC2_CH4 (GPIO 13)</li>
+  <li>ADC2_CH5 (GPIO 12)</li>
+  <li>ADC2_CH6 (GPIO 14)</li>
+  <li>ADC2_CH7 (GPIO 27)</li>
+  <li>ADC2_CH8 (GPIO 25)</li>
+  <li>ADC2_CH9 (GPIO 26)</li>
+</ul>
+
+<h4 id="dac-digital-toanalog-converter">DAC (Digital-toAnalog Converter)</h4>
+
+<p>2개의 8-bit DAC 채널</p>
+
+<ul>
+  <li>DAC1 (GPIO 25)</li>
+  <li>DAC2 (GPIO 26)</li>
+</ul>
+
+<h4 id="rtc-gpio">RTC GPIO</h4>
+
+<p>There is RTC GPIO support on the ESP32. The GPIOs routed to the RTC low-power subsystem can be used when the ESP32 is in deep sleep. These RTC GPIOs can be used to wake up the ESP32 from deep sleep when the Ultra Low Power (ULP) co-processor is running. The following GPIOs can be used as an external wake up source.</p>
+
+<ul>
+  <li>RTC_GPIO0 (GPIO 36)</li>
+  <li>RTC_GPIO3 (GPIO 39)</li>
+  <li>RTC_GPIO4 (GPIO 34)</li>
+  <li>RTC_GPIO5 (GPIO 35)</li>
+  <li>RTC_GPIO6 (GPIO 25)</li>
+  <li>RTC_GPIO7 (GPIO 26)</li>
+  <li>RTC_GPIO8 (GPIO 33)</li>
+  <li>RTC_GPIO9 (GPIO 32)</li>
+  <li>RTC_GPIO10 (GPIO 4)</li>
+  <li>RTC_GPIO11 (GPIO 0)</li>
+  <li>RTC_GPIO12 (GPIO 2)</li>
+  <li>RTC_GPIO13 (GPIO 15)</li>
+  <li>RTC_GPIO14 (GPIO 13)</li>
+  <li>RTC_GPIO15 (GPIO 12)</li>
+  <li>RTC_GPIO16 (GPIO 14)</li>
+  <li>RTC_GPIO17 (GPIO 27)</li>
+</ul>
+
+<h4 id="pwm">PWM</h4>
+
+<p>출력 가능한 모든 핀은 PWM으로 사용 가능, 따라서 입력 전용 핀인 34-39는 PWM으로 사용 불가능</p>
+
+<p>필요한 파라미터</p>
+
+<ul>
+  <li>Signal Frequency</li>
+  <li>Duty Cycle</li>
+  <li>PWM Channel</li>
+  <li>신호를 출력할 GPIO핀</li>
+</ul>
+
+<h3 id="i2c">I2C</h3>
+
+<p>ESP32에는 두 개의 I2C 채널이 있으며 모든 핀을 SDA 또는 SCL로 설정할 수 있음. Arduino IDE와 함께 ESP32를 사용할 경우 기본 I2C 핀은 다음과 같음</p>
+
+<ul>
+  <li>GPIO 21 (SDA)</li>
+  <li>GPIO 22 (SCL)</li>
+</ul>
+
+<h4 id="spi">SPI</h4>
+
+<p>By default, the pin mapping for SPI is:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>SPI</th>
+      <th>MOSI</th>
+      <th>MISO</th>
+      <th>CLK</th>
+      <th>CS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>VSPI</strong></td>
+      <td>GPIO 23</td>
+      <td>GPIO 19</td>
+      <td>GPIO 18</td>
+      <td>GPIO 5</td>
+    </tr>
+    <tr>
+      <td><strong>HSPI</strong></td>
+      <td>GPIO 13</td>
+      <td>GPIO 12</td>
+      <td>GPIO 14</td>
+      <td>GPIO 15</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="interupt">Interupt</h4>
+
+<p>All GPIOs can be configured as interrupts.</p>
+
+<h4 id="strapping-pin">Strapping Pin</h4>
+
+<p>이는 ESP32를 부팅 로더 또는 플래시 모드로 전환하는 데 사용됩니다. USB/Serial이 내장된 대부분의 개발 보드에서 이러한 핀의 상태에 대해 걱정할 필요가 없습니다. 보드는 핀을 점멸 또는 부팅 모드에 적합한 상태로 둡니다. ESP32 부팅 모드 선택에 대한 자세한 내용은 여기에서 확인할 수 있습니다.</p>
+
+<p>그러나 이러한 핀에 주변 장치가 연결되어 있는 경우 새 코드를 업로드하려고 하면 ESP32가 새 펌웨어로 깜박이거나 보드를 재설정하는 데 문제가 있을 수 있습니다. 일부 주변 장치가 스트랩 핀에 연결되어 있는데 코드를 업로드하거나 ESP32를 깜박이는 데 문제가 있는 경우, 주변 장치가 ESP32를 올바른 모드로 전환하지 못하기 때문일 수 있습니다. 올바른 방향으로 안내하려면 부팅 모드 선택 설명서를 읽어 보십시오. 재설정, 깜박임 또는 부팅 후에는 이러한 핀이 예상대로 작동합니다.</p>
+
+<ul>
+  <li>GPIO 0</li>
+  <li>GPIO 2</li>
+  <li>GPIO 4</li>
+  <li>GPIO 5 (must be HIGH during boot)</li>
+  <li>GPIO 12 (must be LOW during boot)</li>
+  <li>GPIO 15 (must be HIGH during boot)</li>
+</ul>
+
+<h4 id="pins-high-at-boot">Pins High at Boot</h4>
+
+<p>일부 GPIO는 부팅 또는 재설정 시 상태를 HIGH로 변경하거나 PWM 신호를 출력함</p>
+
+<ul>
+  <li>GPIO 1</li>
+  <li>GPIO 3</li>
+  <li>GPIO 5</li>
+  <li>GPIO 6 to GPIO 11
+(connected to the ESP32 integrated SPI flash memory – not recommended to use).</li>
+  <li>GPIO 14</li>
+  <li>GPIO 15</li>
+</ul>
+
+<h4 id="enable-en">Enable (EN)</h4>
+
+<p>EN은 3.3V 레귤레이터의 Enable핀으로, 풀업이 되어 있어 GND에 연결하면 3.3V 레귤레이터가 비활성화됨. 이 핀을 푸쉬버튼에 연결해 놓으면 ESP32를 재시동하는데 사용 가능</p>
+
+<h4 id="gpio-current-drawn">GPIO current drawn</h4>
+
+<p>The absolute maximum current drawn per GPIO is 40mA according to the “Recommended Operating Conditions” section in the ESP32 datasheet.</p>
+
+<h4 id="esp32-built-in-hall-effect-sensor">ESP32 Built-In Hall Effect Sensor</h4>
+
+<p>The ESP32 also features a built-in hall effect sensor that detects changes in the magnetic field in its surroundings.</p>
+
+<blockquote>
+  <p>아두이노 IDE에서 사용하는 경우 핀 번호 D23 (pin15/GPIO 23)핀은 ‘23’으로 사용하면 됨</p>
+</blockquote>
+
+<h3 id="reference">Reference</h3>
+
+<ul>
+  <li>https://github.com/espressif/arduino-esp32</li>
+</ul>
+</section>
+  
+<footer>
+  <div class="tags">
+    
+    <a class="tag" href="https://mmirann.github.io/tags#IoT">#IoT</a>
+    
+    <a class="tag" href="https://mmirann.github.io/tags#Arduino">#Arduino</a>
+    
+  </div>
+</footer>
+
+
+</article>
+
+<hr>
+
+<!-- Disqus -->
+
+<div class="comments"><div id="disqus_thread"><iframe id="dsq-app7441" name="dsq-app7441" allowtransparency="true" frameborder="0" scrolling="no" tabindex="0" title="Disqus" width="100%" src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/saved_resource.html" style="width: 1px !important; min-width: 100% !important; border: none !important; overflow: hidden !important; height: 461px !important;" horizontalscrolling="no" verticalscrolling="no"></iframe></div>
+<script type="text/javascript">
+  var disqus_shortname = "mmirann";
+  (function () {
+    var dsq = document.createElement("script");
+    dsq.type = "text/javascript";
+    dsq.async = true;
+    dsq.src = "//" + disqus_shortname + ".disqus.com/embed.js";
+    (
+      document.getElementsByTagName("head")[0] ||
+      document.getElementsByTagName("body")[0]
+    ).appendChild(dsq);
+  })();
+</script>
+<noscript>Please enable JavaScript to view comments.</noscript>
+</div>
+
+
+<!-- Post navigation -->
+ <div id="post-nav">
+  
+  <div id="previous-post" class="post-nav-post">
+      <p>Previous post</p>
+      <a href="https://mmirann.github.io/study/datacommu/2021/02/02/dc4.html">
+        [데이터통신] 3.Data Link Layer
+      </a>
+  </div>
+  
+  
+  <div id="next-post" class="post-nav-post">
+      <p>Next post</p>
+      <a href="https://mmirann.github.io/iot/arduino/2021/02/08/ESP32_PWM.html">
+        [ESP32] ESP32 PWM (LED/서보모터)
+      </a>
+  </div>
+  
+</div>
+ 
+
+    </div>
+    
+<script src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/katex_init.js.다운로드"></script>
+
+
+
+<footer class="site-footer">
+	<p class="text">Powered by <a href="https://jekyllrb.com/">Jekyll</a> with <a href="https://github.com/rohanchandra/type-theme">Type Theme</a>
+</p>
+</footer>
+
+
+  
+
+<iframe style="display: none;" src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/saved_resource(1).html"></iframe><span style="border-radius:10px !important;text-indent:12px !important;width:auto !important;height:20px !important;padding:0px 8px !important;text-align:center !important;vertical-align:middle !important;font:bold 11px / 20px &quot;Helvetica Neue&quot;, Helvetica, sans-serif !important;color:rgb(255, 255, 255) !important;background:url(&quot;data:image/svg+xml;base64,PHN2ZyBpZD0ic291cmNlIiB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iNiIgY3k9IjYiIHI9IjYiIGZpbGw9IiNFNjAwMjMiPjwvY2lyY2xlPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTAgNkMwIDguNTYxNSAxLjYwNTUgMTAuNzQ4NSAzLjg2NSAxMS42MDlDMy44MSAxMS4xNDA1IDMuNzUxNSAxMC4zNjggMy44Nzc1IDkuODI2QzMuOTg2IDkuMzYgNC41NzggNi44NTcgNC41NzggNi44NTdDNC41NzggNi44NTcgNC4zOTk1IDYuNDk5NSA0LjM5OTUgNS45N0M0LjM5OTUgNS4xNCA0Ljg4MDUgNC41MiA1LjQ4IDQuNTJDNS45OSA0LjUyIDYuMjM2IDQuOTAyNSA2LjIzNiA1LjM2MUM2LjIzNiA1Ljg3MzUgNS45MDk1IDYuNjM5NSA1Ljc0MSA3LjM1QzUuNjAwNSA3Ljk0NDUgNi4wMzk1IDguNDI5NSA2LjYyNTUgOC40Mjk1QzcuNjg3IDguNDI5NSA4LjUwMzUgNy4zMSA4LjUwMzUgNS42OTRDOC41MDM1IDQuMjYzNSA3LjQ3NTUgMy4yNjQgNi4wMDggMy4yNjRDNC4zMDkgMy4yNjQgMy4zMTE1IDQuNTM4NSAzLjMxMTUgNS44NTZDMy4zMTE1IDYuMzY5NSAzLjUwOSA2LjkxOTUgMy43NTYgNy4yMTlDMy44MDQ1IDcuMjc4NSAzLjgxMiA3LjMzIDMuNzk3NSA3LjM5MDVDMy43NTIgNy41Nzk1IDMuNjUxIDcuOTg1IDMuNjMxNSA4LjA2OEMzLjYwNSA4LjE3NyAzLjU0NSA4LjIwMDUgMy40MzE1IDguMTQ3NUMyLjY4NTUgNy44MDA1IDIuMjE5NSA2LjcxIDIuMjE5NSA1LjgzNEMyLjIxOTUgMy45NDk1IDMuNTg4IDIuMjE5NSA2LjE2NTUgMi4yMTk1QzguMjM3NSAyLjIxOTUgOS44NDggMy42OTYgOS44NDggNS42NjlDOS44NDggNy43Mjc1IDguNTUwNSA5LjM4NDUgNi43NDg1IDkuMzg0NUM2LjE0MyA5LjM4NDUgNS41NzQ1IDkuMDY5NSA1LjM3OTUgOC42OThDNS4zNzk1IDguNjk4IDUuMDggOS44MzkgNS4wMDc1IDEwLjExOEM0Ljg2NjUgMTAuNjYgNC40NzU1IDExLjM0NiA0LjIzMyAxMS43MzU1QzQuNzkyIDExLjkwNzUgNS4zODUgMTIgNiAxMkM5LjMxMzUgMTIgMTIgOS4zMTM1IDEyIDZDMTIgMi42ODY1IDkuMzEzNSAwIDYgMEMyLjY4NjUgMCAwIDIuNjg2NSAwIDZaIiBmaWxsPSJ3aGl0ZSI+PC9wYXRoPgo8L3N2Zz4=&quot;) 4px 50% / 12px 12px no-repeat rgb(230, 0, 35) !important;position:absolute !important;opacity:1 !important;z-index:9007199254740990 !important;display:none !important;cursor:pointer !important;border:none !important;-webkit-font-smoothing:antialiased !important;top:0 !important;left:0 !important;display:none !important;top:810px !important;left:322px !important">저장</span><iframe id="li_sync_frame" src="./[ESP32] ESP32 GPIO PIN 별 사용법 _ Miran Lee 👩_💻_files/sync-container.html" style="opacity: 0; width: 0px; height: 0px; border: 0px; position: absolute; top: 0px; left: 0px; z-index: -1000;"></iframe></body></html>

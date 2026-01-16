@@ -1,0 +1,195 @@
+#include <Open62541-Arduino.h> // 라이브러리 필요
+#include <WiFi.h>
+
+// ==========================================
+// 1. 사용자 설정 (이 부분을 꼭 수정하세요!)
+// ==========================================
+
+// [모터 1 - 왼쪽] (보내주신 핀)
+#define MOTOR1_R_EN  5
+#define MOTOR1_L_EN  4
+#define MOTOR1_RPWM  3
+#define MOTOR1_LPWM  2
+// [엔코더 1 - 왼쪽] (핀 번호 확인 후 수정 필요!)
+#define ENC1_A       14  // 예시
+#define ENC1_B       12  // 예시
+
+// [모터 2 - 오른쪽] (보내주신 핀)
+#define MOTOR2_R_EN  10
+#define MOTOR2_L_EN  11
+#define MOTOR2_RPWM  8
+#define MOTOR2_LPWM  9
+// [엔코더 2 - 오른쪽] (핀 번호 확인 후 수정 필요!)
+#define ENC2_A       26  // 예시
+#define ENC2_B       27  // 예시
+
+// [로봇 기구 정보] (단위: 미터)
+const double WHEEL_DIAMETER = 0.10; // 예: 10cm 바퀴 -> 0.10
+const double WHEEL_BASE = 0.30;     // 예: 바퀴 사이 간격 30cm -> 0.30
+
+// [엔코더 정보]
+// 중요: 모터 뒤쪽 엔코더가 22펄스라면, 기어비(예: 1/50)를 곱해야 바퀴 1회전 펄스가 됩니다.
+// 기어박스가 없다면 그냥 22, 있다면 (22 * 기어비)를 입력하세요.
+const double TICKS_PER_REV = 22.0; 
+
+// 와이파이 설정
+const char *ssid = "YOUR_WIFI_SSID";
+const char *password = "YOUR_WIFI_PASS";
+
+// ==========================================
+// 2. 전역 변수
+// ==========================================
+volatile long left_ticks = 0;
+volatile long right_ticks = 0;
+
+// AGV 현재 위치 (오도메트리)
+double current_x = 0.0;
+double current_y = 0.0;
+double current_theta = 0.0;
+
+// OPC UA 서버 및 노드 ID
+UA_Server *server;
+UA_NodeId xNodeId;
+UA_NodeId yNodeId;
+UA_NodeId thetaNodeId;
+
+// 시간 계산용
+unsigned long prev_time = 0;
+const int LOOP_INTERVAL = 100; // 100ms마다 좌표 계산 및 전송
+
+// ==========================================
+// 3. 엔코더 인터럽트 함수
+// ==========================================
+void IRAM_ATTR readEncoder1() {
+  if (digitalRead(ENC1_B) == LOW) left_ticks++;
+  else left_ticks--;
+}
+
+void IRAM_ATTR readEncoder2() {
+  if (digitalRead(ENC2_B) == LOW) right_ticks++;
+  else right_ticks--;
+}
+
+// ==========================================
+// 4. 초기 설정 (Setup)
+// ==========================================
+void setup() {
+  Serial.begin(115200);
+
+  // 모터 핀 설정
+  pinMode(MOTOR1_R_EN, OUTPUT); pinMode(MOTOR1_L_EN, OUTPUT);
+  pinMode(MOTOR1_RPWM, OUTPUT); pinMode(MOTOR1_LPWM, OUTPUT);
+  pinMode(MOTOR2_R_EN, OUTPUT); pinMode(MOTOR2_L_EN, OUTPUT);
+  pinMode(MOTOR2_RPWM, OUTPUT); pinMode(MOTOR2_LPWM, OUTPUT);
+
+  // BTS7960 활성화 (Enable 핀을 HIGH로)
+  digitalWrite(MOTOR1_R_EN, HIGH); digitalWrite(MOTOR1_L_EN, HIGH);
+  digitalWrite(MOTOR2_R_EN, HIGH); digitalWrite(MOTOR2_L_EN, HIGH);
+
+  // 엔코더 핀 설정 & 인터럽트 부착
+  pinMode(ENC1_A, INPUT_PULLUP); pinMode(ENC1_B, INPUT_PULLUP);
+  pinMode(ENC2_A, INPUT_PULLUP); pinMode(ENC2_B, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ENC1_A), readEncoder1, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENC2_A), readEncoder2, RISING);
+
+  // 와이파이 연결
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected!");
+
+  // OPC UA 서버 설정
+  server = UA_Server_new();
+  UA_ServerConfig *config = UA_Server_getConfig(server);
+  UA_ServerConfig_setMinimal(config, 4840, NULL);
+
+  // 노드 추가 (X, Y, Theta)
+  addVariable(server, &xNodeId, "AGV_Pos_X");
+  addVariable(server, &yNodeId, "AGV_Pos_Y");
+  addVariable(server, &thetaNodeId, "AGV_Heading");
+
+  UA_Server_run_startup(server);
+}
+
+// ==========================================
+// 5. 메인 루프 (Loop)
+// ==========================================
+void loop() {
+  // OPC UA 통신 처리
+  UA_Server_run_iterate(server, true);
+
+  // 주기적으로 좌표 계산
+  unsigned long current_time = millis();
+  if (current_time - prev_time >= LOOP_INTERVAL) {
+    prev_time = current_time;
+    
+    calculateOdometry();
+    updateOPCUA();
+  }
+}
+
+// ==========================================
+// 6. 좌표 계산 로직 (Odometry)
+// ==========================================
+long prev_left_ticks = 0;
+long prev_right_ticks = 0;
+
+void calculateOdometry() {
+  // 틱 변화량 계산
+  long delta_left = left_ticks - prev_left_ticks;
+  long delta_right = right_ticks - prev_right_ticks;
+
+  prev_left_ticks = left_ticks;
+  prev_right_ticks = right_ticks;
+
+  // 바퀴 이동 거리 (m)
+  // 바퀴 둘레(PI * D) * (변화량 / 1회전 펄스)
+  double d_left = (PI * WHEEL_DIAMETER) * (delta_left / TICKS_PER_REV);
+  double d_right = (PI * WHEEL_DIAMETER) * (delta_right / TICKS_PER_REV);
+
+  // 로봇 중심 이동 거리 및 회전각 변화
+  double d_center = (d_left + d_right) / 2.0;
+  double d_theta = (d_right - d_left) / WHEEL_BASE;
+
+  // 좌표 업데이트
+  current_x += d_center * cos(current_theta);
+  current_y += d_center * sin(current_theta);
+  current_theta += d_theta;
+
+  // 디버깅용 출력
+  Serial.printf("X: %.2f, Y: %.2f, Theta: %.2f\n", current_x, current_y, current_theta);
+}
+
+// ==========================================
+// 7. OPC UA 값 업데이트 함수
+// ==========================================
+void updateOPCUA() {
+  UA_Variant val;
+  
+  UA_Variant_setScalar(&val, &current_x, &UA_TYPES[UA_TYPES_DOUBLE]);
+  UA_Server_writeValue(server, xNodeId, val);
+
+  UA_Variant_setScalar(&val, &current_y, &UA_TYPES[UA_TYPES_DOUBLE]);
+  UA_Server_writeValue(server, yNodeId, val);
+
+  UA_Variant_setScalar(&val, &current_theta, &UA_TYPES[UA_TYPES_DOUBLE]);
+  UA_Server_writeValue(server, thetaNodeId, val);
+}
+
+// 노드 생성 도우미 함수
+void addVariable(UA_Server *server, UA_NodeId *nodeId, char *name) {
+  UA_VariableAttributes attr = UA_VariableAttributes_default;
+  UA_Double initialValue = 0.0;
+  UA_Variant_setScalar(&attr.value, &initialValue, &UA_TYPES[UA_TYPES_DOUBLE]);
+  attr.displayName = UA_LOCALIZEDTEXT("en-US", name);
+  attr.accessLevel = UA_ACCESSLEVELMASK_READ; // 클라이언트는 읽기만 가능
+
+  UA_Server_addVariableNode(server, UA_NODEID_STRING(1, name),
+                            UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+                            UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                            UA_QUALIFIEDNAME(1, name),
+                            UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
+                            attr, NULL, nodeId);
+}

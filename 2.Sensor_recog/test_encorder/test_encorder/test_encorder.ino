@@ -4,10 +4,10 @@
 // ==========================================
 
 // 엔코더 핀 정의 (A상, B상)
-const int ENC1_A = 2; const int ENC1_B = 3;
+const int ENC1_A = 12; const int ENC1_B = 13;
 const int ENC2_A = 4; const int ENC2_B = 5;
 const int ENC3_A = 6; const int ENC3_B = 7;
-const int ENC4_A = 9; const int ENC4_B = 10;
+const int ENC4_A = 9; const int ENC4_B = 1;
 
 // 엔코더 카운트 변수
 volatile long count1 = 0;
