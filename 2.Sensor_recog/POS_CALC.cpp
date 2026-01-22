@@ -68,6 +68,8 @@ double calculate_x(double angleDeg) {
  return x;
 }
 
+
+
 double calculate_y(double angleDeg) {
  double y = calculate_distance() * sin(angleDeg);
  return y;

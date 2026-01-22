@@ -40,6 +40,7 @@ int pwmValue = DEFAULT_SPEED;       // 현재 PWM 값
 volatile char lastReceivedCmd = 0;  // 마지막 수신 명령
 volatile bool cmdReceived = false;  // 명령 수신 플래그
 volatile uint32_t lastPacketTime = 0; // 마지막 유효 패킷 수신 시간 (ms)
+volatile uint32_t byteCount = 0;    // 수신된 총 바이트 수 (디버그용)
 
 // MotorDrive 객체 생성
 MotorDrive motor(MOTOR1_R_EN, MOTOR1_L_EN, MOTOR1_RPWM, MOTOR1_LPWM,
@@ -50,6 +51,9 @@ LineTracer lineTracer(motor);
 
 bool isLineTracing = false;
 bool isPIDTracing = false;
+bool isAutoMode = false;
+uint32_t autoModeTimer = 0;
+int autoModeStep = 0;
 
 // ============== Setup ==============
 void setup() {
@@ -93,16 +97,19 @@ void setup() {
 // ============== SPI 인터럽트 ==============
 ISR(SPI_STC_vect) {
   byte inByte = SPDR;
+  byteCount++; // 아무 데이터나 들어오면 카운트 증가
   static byte state = 0; 
   
-  if (state == 0) {
-    if (inByte == '<') state = 1;
-  } 
-  else if (state == 1) {
+  // 언제 어디서든 '<'가 들어오면 패킷 시작으로 간주 (동기화 보장)
+  if (inByte == '<') {
+    state = 1;
+    return;
+  }
+  
+  if (state == 1) {
     lastReceivedCmd = inByte;
     state = 2;
-    SPDR = inByte; 
-  }
+  } 
   else if (state == 2) {
     if (inByte == '>') {
       cmdReceived = true;
@@ -110,25 +117,32 @@ ISR(SPI_STC_vect) {
     }
     state = 0;
   }
-  
-  if (state == 0) SPDR = 0x00;
 }
 
 // ============== Main Loop ==============
 void loop() {
   uint32_t now = millis();
 
-  // 1. 세이프티 워치독
+  /*
+  // 1. 세이프티 워치독 (700ms 이상 신호 없으면 정지)
+  static bool isHalted = false;
   if (now - lastPacketTime > 700) {
-    static bool watchDogAction = false;
-    if (!watchDogAction) {
+    if (!isHalted) {
       motor.stop();
       isLineTracing = false;
       isPIDTracing = false;
-      Serial.println(F("[WATCHDOG] Communication lost! Stopped."));
-      watchDogAction = true;
+      isAutoMode = false;
+      Serial.print(F("[WATCHDOG] Communication LOST! Total Bytes received: "));
+      Serial.println(byteCount);
+      isHalted = true;
+    }
+  } else {
+    if (isHalted) {
+      Serial.println(F("[WATCHDOG] Communication RECOVERED. Ready."));
+      isHalted = false;
     }
   }
+  */
 
   // 2. SPI 명령 처리
   if (cmdReceived) {
@@ -137,10 +151,11 @@ void loop() {
 
     Serial.print(F("[SPI] CMD: '")); Serial.print(cmd); Serial.println(F("'"));
 
-    // 새로운 명령 수신 시 기본적으로 라인트레이싱 모드 해제 (명시적 명령 전까지)
-    if (cmd != 'l' && cmd != 'p') {
+    // 새로운 명령 수신 시 기본적으로 라인트레이싱/오토 모드 해제 (명시적 명령 전까지)
+    if (cmd != 'l' && cmd != 'p' && cmd != '1') {
       isLineTracing = false;
       isPIDTracing = false;
+      isAutoMode = false;
     }
 
     switch (cmd) {
@@ -166,6 +181,16 @@ void loop() {
       case 'p': 
         isPIDTracing = true;
         isLineTracing = false;
+        isAutoMode = false;
+        break;
+      case '1':
+        isAutoMode = true;
+        isLineTracing = false;
+        isPIDTracing = false;
+        autoModeTimer = millis();
+        autoModeStep = 0;
+        motor.forward();
+        Serial.println(F("[MODE] Auto Loop Start: Forward -> TurnLeft"));
         break;
       case 'c': // Calibration command
         lineTracer.calibrate();
@@ -173,8 +198,20 @@ void loop() {
     }
   }
 
-  // 3. 라인트레이싱 로직 실행
-  if (isLineTracing) {
+  // 3. 라인트레이싱 및 오토 모드 로직 실행
+  if (isAutoMode) {
+    if (now - autoModeTimer >= 1000) {
+      autoModeTimer = now;
+      autoModeStep = (autoModeStep + 1) % 2;
+      if (autoModeStep == 0) {
+        motor.forward();
+        Serial.println(F("[AUTO] Forwarding..."));
+      } else {
+        motor.turnLeft();
+        Serial.println(F("[AUTO] Turning Left..."));
+      }
+    }
+  } else if (isLineTracing) {
     lineTracer.runBasic();
   } else if (isPIDTracing) {
     lineTracer.runPID();

@@ -10,6 +10,7 @@ README (한국어) - NEWMECHA_ROBOT_0.1V
 통신 흐름
 서버 → ESP32
 - 목적지 경로 설정 opcua
+
 예시:
 - A에서 B로 이동
 - A에서 B로 이동하면서 중간에 C를 들름
