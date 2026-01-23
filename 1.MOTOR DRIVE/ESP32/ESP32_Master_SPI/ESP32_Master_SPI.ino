@@ -90,7 +90,6 @@ void sendCommand(char cmd) {
   // 슬레이브(Mega)와의 안정적인 통신을 위해 Transaction과 Delay를 추가합니다.
   SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE0)); 
   digitalWrite(chipSelectPin, LOW);
-  
   SPI.transfer('<');
   delayMicroseconds(30); // 메가가 인터럽트를 처리할 시간을 줍니다. (20us -> 30us로 상향)
   SPI.transfer(cmd);
