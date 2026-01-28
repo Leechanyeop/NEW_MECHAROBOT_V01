@@ -1,31 +1,46 @@
-README (EN) - NEWMECHA_ROBOT_0.1V
-System Modules
-- MOTOR DRIVE – Robot driving and movement
-- SENSOR_recog – Sensor recognition
-- motion_track – Motion control when obstacles are detected
-- CRC_tel – Communication node between server and robot
-- vision_CAM – Vision camera for object recognition
-- QR_visible – QR code recognition and coordinate calculation
+# NEW_MECHROBOT_V01
 
-Communication Flow
-SERVER → ESP32
-- Destination Path Setting
-Examples:
-- Go from A to B
-- Travel from A to B and stop by C along the way
-- Arrive at B, pass through D, then return to A
-Digital Map Example:
+ESP32 Master와 Arduino Mega Slave를 이용한 자율 주행 로봇 제어 시스템입니다.
 
-    _______________ B
-A --------|---------------- C
-    |_______________ D
-- ESP32 reads QR values sent from the server and converts them into real-time navigation paths.
-- The server receives shared data from the robot, including sensor readings and obstacle detection video.
+## 🚀 주요 기능
+- **실시간 오도메트리**: 엔코더 데이터를 바탕으로 로봇의 X, Y 좌표 및 각도(Theta)를 정밀하게 추적합니다.
+- **WiFi 서버 연동**: 프로젝트의 현재 좌표를 TCP/IP를 통해 PC 서버로 전송(Heartbeat)하고 원격 명령을 수신합니다.
+- **SPI 통신**: ESP32(Master)에서 결정된 제어 명령을 Arduino Mega(Slave)로 프레임 데이터(`<command>`) 형태로 전송합니다.
+- **자동 주행 시퀀스**: 특정 좌표 도달 시 정지 및 부가 장치(컨베이어) 작동 등 시나리오 주행을 지원합니다.
 
-ESP32 → SERVER
-- At each tracing branch, ESP32 recognizes QR codes and sends the QR values to the server.
-- When obstacles are detected, ESP32 uses vision and ultrasonic sensors to inspect and transmit real-time video.
-- ESP32 sends various sensor data from the robot back to the server.
+## 📂 시스템 구조
+- **ESP32_Master.ino**: 시스템의 두뇌 역할
+  - WiFi/TCP 서버 연결 및 데이터 송수신
+  - 2채널 엔코더 읽기 및 이동 거리 계산
+  - 목표 지점(X=2500, 5000 등) 관리
+- **MotorDrive_Mega.ino**: 실질적인 구동 역할
+  - SPI 슬레이브 데이터 수신
+  - 모터 전진/후진/정지 및 PID 라인 트레이싱 실행
+  - 컨베이어 벨트 등 액추에이터 제어
 
-This document provides a clear overview of the NEWMECHA_ROBOT_0.1V system, its modules, and the communication workflow between the server and ESP32.
+## 📡 통신 프로토콜 (SPI/TCP)
+| 명령어 | 기능 |
+| :--- | :--- |
+| `<p>` | PID 라인 트레이싱 시작 |
+| `<x>` | 모든 동작 정지 |
+| `<w>` | 전진 (100mm 이동 시퀀스용) |
+| `<s>` | 후진 (100mm 이동 시퀀스용) |
+| `<j>` | 컨베이어 벨트 작동 |
 
+## 🕹️ 조작 가이드 (Serial/WiFi Command)
+- **1**: X=2500mm 지점까지 라인 트레이싱 후 정지 + 컨베이어 작동
+- **2**: X=5000mm 지점까지 라인 트레이싱 후 정지 + 컨베이어 작동
+- **R / CTRL+R**: 현재 좌표 및 엔코더 값 0으로 초기화 (Reset)
+- **w / a / s / d**: 수동 전진/좌회전/후진/우회전
+- **x**: 비상 정지
+
+## 📏 로봇 사양 (Odometry Constants)
+- **바퀴 지름**: 67.0 mm
+- **감속비**: 1:30
+- **엔코더**: 11 CPR (4바퀴 체배 적용 시 1320 Ticks/Rev)
+- **바퀴 간 거리 (Wheel Base)**: 200.0 mm
+
+## 🛠️ 설치 및 설정
+1. ESP32 및 Arduino Mega의 핀 맵 확인 (SPI 연결 주의).
+2. ESP32_Master.ino에서 WiFi SSID 및 Password 설정.
+3. PC에서 TCP Server(Port 5000) 실행 후 로봇 전원 인가.
