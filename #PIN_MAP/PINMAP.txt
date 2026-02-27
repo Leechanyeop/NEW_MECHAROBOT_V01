@@ -1,0 +1,50 @@
+PINMAP
+
+
+
+
+QTR LINECENSOR
+
+
+QTR 라인 센서 핀 ()
+
+
+
+
+
+
+
+SPI
+         esp32           mega2560
+blue      19    miso
+white     23    mosi  
+puple    18    sck
+orange   5     ss  
+
+yellow   5v
+green    gnd
+
+
+
+ESP32 전용
+5 
+18
+19
+23
+
+36
+39
+34
+35
+
+// 모터 1 (왼쪽)
+#define MOTOR1_R_EN 4
+#define MOTOR1_L_EN 5
+#define MOTOR1_RPWM 2
+#define MOTOR1_LPWM 3
+
+// 모터 2 (오른쪽)
+#define MOTOR2_R_EN 10
+#define MOTOR2_L_EN 11
+#define MOTOR2_RPWM 8
+#define MOTOR2_LPWM 9
